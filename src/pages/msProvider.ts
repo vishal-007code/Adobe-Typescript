@@ -26,7 +26,7 @@ export class MsProvider {
     async ms_password_field( password : string ): Promise<void> {
         await this.password_field.fill(password);
         await this.page.waitForTimeout(1000);
-        await this.email_field.press("Enter");
+        await this.password_field.press("Enter");
     }
 
     async ms_reject_stay_sign_in_confirm(): Promise<void> {
