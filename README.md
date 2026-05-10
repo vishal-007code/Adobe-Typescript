@@ -81,6 +81,12 @@ npm run test:infra
 - `npm run test:adobe:low-network` runs the low-network debug spec only.
 - `npm run test:infra` runs infrastructure-focused tests for account loading and report merging.
 
+## Run on GCP
+
+Use a Cloud Run Job to run the Adobe login flow in GCP until it prints `Login flow completed successfully`.
+
+See [docs/gcp-cloud-run-job.md](./docs/gcp-cloud-run-job.md) for the Cloud Shell deployment steps.
+
 ## How It Works
 
 Adobe tests are declared from available accounts before execution begins:
