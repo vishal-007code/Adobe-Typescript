@@ -15,7 +15,6 @@ coverage/
 *.tsbuildinfo
 
 # Runtime / local data
-accounts.csv
 reports/
 downloads/
 downloads_*/
