@@ -26,6 +26,7 @@ export default defineConfig({
     actionTimeout: 120_000,
     navigationTimeout: 240_000,
     trace: 'on',
+    video: 'on',
     headless: true,
   },
   projects: [
