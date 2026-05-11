@@ -7,16 +7,16 @@ export class GmailProvider {
     readonly welcome_screen : Locator;
     readonly i_understand_button : Locator;
     readonly confirm_signIn_msg : Locator;
-    readonly confirm_sign_in_button  : Locator;
+    readonly confirm_sign_in_button  : Locator;
 
     constructor(page: Page) {
         this.page = page;
         this.email_field = page.getByLabel('Email or phone');
         this.password_field = page.getByLabel('Enter your password');
         this.welcome_screen = page.getByText('Welcome to your new account');
-        this.i_understand_button = page.getByRole('button');
+        this.i_understand_button = page.getByRole('button', { name: /I understand/i });
         this.confirm_signIn_msg = page.getByText('Sign in to Adobe');
-        this.confirm_sign_in_button = page.getByText('Continue');
+        this.confirm_sign_in_button = page.getByRole('button', { name: /^Continue$/i });
     }
 
     async g_email_field( email : string ): Promise<void> {
@@ -32,11 +32,20 @@ export class GmailProvider {
     }
 
     async click_g_iUnderstand(): Promise<void> {
-        await this.i_understand_button.click();
+        await this.click_optional_button(this.i_understand_button);
     }
 
     async click_confirm_sign_in_button(): Promise<void> {
-        await this.confirm_sign_in_button.click();
+        await this.click_optional_button(this.confirm_sign_in_button);
+    }
+
+    private async click_optional_button(locator: Locator, timeout = 5000): Promise<void> {
+        try {
+            const button = locator.filter({ visible: true }).first();
+            await button.waitFor({ state: 'visible', timeout });
+            await button.click({ timeout });
+        } catch (e) {
+        }
     }
 
     async g_login( email:string , password:string): Promise<void> {
@@ -44,21 +53,11 @@ export class GmailProvider {
         await this.g_email_field( email );
         await this.g_password_field( password);
 
-        try {
-            await this.welcome_screen.waitFor({ state: 'visible',timeout: 3000});
-        } catch (e) {}
-        if (await this.welcome_screen.isVisible()) {
-            await this.click_g_iUnderstand();
-        }
-
-        try {
-            await this.confirm_signIn_msg.waitFor({state: 'visible',timeout: 3000});
-        } catch (e) {}
-        if (await this.confirm_sign_in_button.isVisible()) {
-            await this.click_confirm_sign_in_button();
-        }
+        await this.click_g_iUnderstand();
+        await this.click_confirm_sign_in_button();
 
     }
+
 
 
 }

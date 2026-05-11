@@ -25,11 +25,11 @@ export class AdobePage {
         this.email_field_continue = page.getByLabel('Continue');
         this.loadIndicator = page.getByTestId('firefly-skeleton');
         this.selected_card = page.locator(".selected.card");
-        this.letsGo_btn = page.getByText('Let’s go');
+        this.letsGo_btn = page.getByTestId('x-dialog-primary-cta');
         this.sltNaccount = page.getByRole('heading', { name: 'Select an account' });
         this.cmp_option = page.getByText('Company or School Account');
         this.genratedImg = page.getByTestId('firefly-thumbnail-image').first();
-        this.letsGoIndicator = page.getByText('Hold tight. We’re loading your school account.', { exact: true });
+        this.letsGoIndicator = page.getByRole('heading', { name: /Help us customize your experience\./i });
     }
 
     async adb_login(): Promise<void> {
@@ -108,10 +108,13 @@ export class AdobePage {
     }
 
     async isLetsGoIndicator_Visible(): Promise<boolean> {
-        return await this.letsGoIndicator
-            .waitFor({ state: 'visible',timeout:10000})
-            .then(() => true)
-            .catch(() => false);
+        try {
+            // Waits up to 5000ms (5 seconds) for the element to be visible
+            await this.letsGoIndicator.waitFor({ state: 'visible', timeout: 10000 });
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     async shortcut(): Promise<void> {
@@ -120,10 +123,11 @@ export class AdobePage {
 
     async handle_letsGo(): Promise<void> {
         try{
-            await this.letsGo_btn.waitFor({state:'visible'});
-        } catch (e) {}
-        if(await this.letsGo_btn.isVisible()){
-            await this.letsGo_btn.click({timeout:5000});
+            await this.letsGo_btn.waitFor({ state: 'visible',timeout:5000*1.5});
+            await this.letsGo_btn.click({ timeout: 5000});
+            console.log("--------------------------- Lets Go --------------------------------");
+        }catch (e) {
+            console.log("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx SKIPPED LET'S GO xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
         }
     }
 

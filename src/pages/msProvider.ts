@@ -24,8 +24,9 @@ export class MsProvider {
     }
 
     async ms_password_field( password : string ): Promise<void> {
+        await this.password_field.waitFor({state:'visible',timeout:2000})
         await this.password_field.fill(password);
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(500);
         await this.password_field.press("Enter");
     }
 
@@ -39,9 +40,8 @@ export class MsProvider {
 
         try {
             await this.email_field.waitFor({ state: 'visible'});
-        } catch (e) {
-            // If it doesn't appear, we assume Scenario 2 (Old User)
-        }
+        } catch (e) {}
+
         if (await this.email_field.isVisible()) {
             await this.ms_email_field(email);
             await this.password_field.waitFor({ state: 'visible' });
@@ -52,8 +52,7 @@ export class MsProvider {
         try {
             await this.stay_signIn_msg.waitFor({ state: 'visible'});
             await this.ms_reject_stay_sign_in_confirm();
-        } catch (e) {
-        }
+        } catch (e) {}
     }
 
 }

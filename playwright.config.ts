@@ -24,7 +24,7 @@ export default defineConfig({
   use: {
     actionTimeout: 120_000,
     navigationTimeout: 240_000,
-    // trace: 'on-first-retry',
+    // trace: 'retain-on-failure',
     headless: false,
   },
   projects: [

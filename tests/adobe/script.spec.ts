@@ -30,12 +30,12 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }) =>
   stepTracker.setStep('Wait for Adobe Dashboard');
   await adobe.waitForDashboard();
 
-  const letsGoVisibleIndicator = await adobe.isLetsGoIndicator_Visible();
-
-  if (letsGoVisibleIndicator) {
-    stepTracker.setStep('Activate by Lets Go');
-    await adobe.handle_letsGo();
-  }
+  // const letsGoVisibleIndicator = await adobe.isLetsGoIndicator_Visible();
+  //
+  // // if (letsGoVisibleIndicator) {
+  //   stepTracker.setStep('Activate by Lets Go');
+  //   await adobe.handle_letsGo();
+  // // }
 
   stepTracker.setStep('Redirect to edit');
   await adobe.shortcut();
