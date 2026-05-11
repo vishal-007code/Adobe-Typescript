@@ -31,20 +31,19 @@ defineAdobeAccountTests(
 
     stepTracker.setStep("Wait for Adobe Dashboard");
     await adobe.waitForDashboard();
-
-    await adobe.page.waitForLoadState("domcontentloaded");
-    await adobe.page.waitForTimeout(3000);
-    // const letsGoVisibleIndicator = await adobe.isLetsGoIndicator_Visible();
-
-    // if (letsGoVisibleIndicator) {
-    try {
-      stepTracker.setStep("Activate by Lets Go");
-      await adobe.handle_letsGo();
-      console.log("Activated by Lets Go");
-    } catch (e) {}
-    // }
-
     console.log("Login flow completed successfully");
+
+    if (process.env.ADOBE_STOP_AFTER_LOGIN?.trim() === "1") {
+      return;
+    }
+
+    const letsGoHandled = await adobe.handle_letsGoIfPresent(2000);
+    if (letsGoHandled) {
+      stepTracker.setStep("Activate by Lets Go");
+      console.log("Activated by Lets Go");
+    } else {
+      console.log("Lets Go button not present; continuing");
+    }
 
     // stepTracker.setStep('Redirect to edit');
     // await adobe.shortcut();

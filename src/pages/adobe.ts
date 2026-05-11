@@ -115,29 +115,25 @@ export class AdobePage {
     } catch (e) {}
   }
 
-  async isLetsGoIndicator_Visible(): Promise<boolean> {
-    return await this.letsGoIndicator
-      .waitFor({ state: "visible", timeout: 10000 })
-      .then(() => true)
-      .catch(() => false);
-  }
-
   async shortcut(): Promise<void> {
     await this.page.goto(
       "https://new.express.adobe.com/new?category=media&action=text+to+image&width=1080&height=1080&intent=general&neural-style=digital&contentClasses=art&prompt=Festival&tab=all"
     );
   }
 
-  async handle_letsGo(): Promise<void> {
+  async handle_letsGoIfPresent(timeoutMs = 2_000): Promise<boolean> {
     try {
       await this.letsGo_btn.waitFor({
         state: "visible",
-        timeout: 3000,
+        timeout: timeoutMs,
       });
 
       if (await this.letsGo_btn.isVisible()) {
         await this.letsGo_btn.click({ timeout: 3000 });
+        return true;
       }
     } catch (e) {}
+
+    return false;
   }
 }

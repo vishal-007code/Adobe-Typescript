@@ -38,7 +38,7 @@ export function mergeAdobeRunArtifacts(options: {
   cwd?: string;
   finishedAt?: Date;
   runId: string;
-}): { consumedLedgerPath: string; resultsPath: string } {
+}): { consumedLedgerPath: string; resultsPath: string; consumedCount: number; resultCount: number } {
   const cwd = options.cwd ?? process.cwd();
   const tmpDir = getAdobeTmpDir(options.runId, cwd);
   const resultsRows = loadRowsFromFragments<AdobeResultRow>(tmpDir, /^results-worker-\d+\.csv$/, ADOBE_RESULTS_HEADERS);
@@ -72,7 +72,12 @@ export function mergeAdobeRunArtifacts(options: {
   );
 
   fs.rmSync(tmpDir, { force: true, recursive: true });
-  return { consumedLedgerPath, resultsPath };
+  return {
+    consumedLedgerPath,
+    resultsPath,
+    consumedCount: mergedConsumedRows.length,
+    resultCount: resultsRows.length,
+  };
 }
 
 function loadRowsFromFragments<T extends Record<string, string>>(

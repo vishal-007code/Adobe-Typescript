@@ -98,6 +98,53 @@ test.describe('Adobe account sourcing', () => {
     ]);
   });
 
+  test('shards accounts by Cloud Run task index', async () => {
+    const tempDir = createTempDir();
+    fs.writeFileSync(
+      path.join(tempDir, 'accounts.csv'),
+      [
+        'email,password',
+        'first@example.com,one',
+        'second@example.com,two',
+        'third@example.com,three',
+        'fourth@example.com,four',
+        'fifth@example.com,five',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = loadFreshAdobeAccounts({
+      cwd: tempDir,
+      env: {
+        CLOUD_RUN_TASK_INDEX: '1',
+        CLOUD_RUN_TASK_COUNT: '2',
+      },
+    });
+
+    expect(result.shard).toEqual({
+      index: 1,
+      total: 2,
+      source: 'cloud-run',
+    });
+    expect(result.accounts.map((account) => account.email)).toEqual([
+      'second@example.com',
+      'fourth@example.com',
+    ]);
+  });
+
+  test('fails clearly when account shard configuration is invalid', async () => {
+    const tempDir = createTempDir();
+    fs.writeFileSync(path.join(tempDir, 'accounts.csv'), 'email,password\nfirst@example.com,one\n', 'utf8');
+
+    expect(() => loadFreshAdobeAccounts({
+      cwd: tempDir,
+      env: {
+        CLOUD_RUN_TASK_INDEX: '2',
+        CLOUD_RUN_TASK_COUNT: '2',
+      },
+    })).toThrow(/CLOUD_RUN_TASK_INDEX must be less than CLOUD_RUN_TASK_COUNT/);
+  });
+
   test('returns a skip reason when all valid accounts are already consumed', async () => {
     const tempDir = createTempDir();
     fs.writeFileSync(

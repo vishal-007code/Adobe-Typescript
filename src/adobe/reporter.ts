@@ -1,4 +1,7 @@
 import type { FullResult, Reporter, TestCase, TestError, TestResult } from '@playwright/test/reporter';
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { appendResultFragment, mergeAdobeRunArtifacts } from './report-files';
 import { ADOBE_ACCOUNT_ATTACHMENT, ADOBE_STEP_ATTACHMENT, requireAdobeRunId } from './runtime';
 import type { AdobeResultStatus } from './types';
@@ -42,10 +45,44 @@ export default class AdobeCsvReporter implements Reporter {
       return;
     }
 
-    mergeAdobeRunArtifacts({
+    const mergedArtifacts = mergeAdobeRunArtifacts({
       finishedAt: new Date(),
       runId: this.runId,
     });
+
+    const summaryPath = path.join(path.dirname(mergedArtifacts.resultsPath), `adobe_report_summary_${this.runId}.json`);
+    fs.writeFileSync(
+      summaryPath,
+      JSON.stringify(
+        {
+          runId: this.runId,
+          resultCount: mergedArtifacts.resultCount,
+          consumedCount: mergedArtifacts.consumedCount,
+          finishedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const uploadResult = spawnSync(
+      process.execPath,
+      [path.resolve(process.cwd(), 'scripts/upload-adobe-reports.mjs')],
+      {
+        env: {
+          ...process.env,
+          ADOBE_RESULTS_PATH: mergedArtifacts.resultsPath,
+          ADOBE_CONSUMED_LEDGER_PATH: mergedArtifacts.consumedLedgerPath,
+          ADOBE_REPORT_SUMMARY_PATH: summaryPath,
+        },
+        stdio: 'inherit',
+      },
+    );
+
+    if (uploadResult.status !== 0) {
+      throw new Error(`Failed to upload Adobe report artifacts. Exit code: ${uploadResult.status ?? 'unknown'}.`);
+    }
 
     if (result.status === 'timedout') {
       return;

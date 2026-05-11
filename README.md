@@ -85,7 +85,7 @@ npm run test:infra
 
 Use a Cloud Run Job to run the Adobe login flow in GCP until it prints `Login flow completed successfully`.
 
-See [docs/gcp-cloud-run-job.md](./docs/gcp-cloud-run-job.md) for the Cloud Shell deployment steps.
+See [docs/gcp-cloud-run-job.md](./docs/gcp-cloud-run-job.md) for the Cloud Shell deployment steps, [docs/gcs-setup.md](./docs/gcs-setup.md) for the GCS account-storage setup, and [docs/run-38k-login.md](./docs/run-38k-login.md) for large login-only runs.
 
 ## How It Works
 

@@ -42,11 +42,9 @@ defineAdobeAccountTests('script flow [low-network debug]', async ({ page, accoun
   stepTracker.setStep('Wait for Adobe Dashboard');
   await adobe.waitForDashboard();
 
-  const letsGoVisible = await adobe.isLetsGoIndicator_Visible();
-
-  if (letsGoVisible) {
+  const letsGoHandled = await adobe.handle_letsGoIfPresent(2000);
+  if (letsGoHandled) {
     stepTracker.setStep('Activate by Lets Go');
-    await adobe.handle_letsGo();
   }
 
   stepTracker.setStep('Redirect to edit');
