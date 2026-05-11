@@ -39,7 +39,7 @@ export class MsProvider {
         await this.page.waitForURL(/login.microsoftonline.com/);
 
         try {
-            await this.email_field.waitFor({ state: 'visible'});
+            await this.email_field.waitFor({ state: 'visible',timeout:4000});
         } catch (e) {}
 
         if (await this.email_field.isVisible()) {
