@@ -9,7 +9,7 @@ const { accounts, shard, skipReason } = loadFreshAdobeAccounts();
 const selectedAccounts = selectScriptAccounts(accounts, SCRIPT_ACCOUNT_LIMIT);
 
 if (selectedAccounts.length === 0) {
-  test.skip(skipReason ?? "No fresh accounts available", async () => {});
+  test.skip(skipReason ?? "No fresh accounts available", async () => { });
 } else {
   if (shard) {
     console.log(
@@ -20,7 +20,7 @@ if (selectedAccounts.length === 0) {
   if (SCRIPT_ACCOUNT_LIMIT && SCRIPT_ACCOUNT_LIMIT < accounts.length) {
     console.log(
       `script.spec.ts limited run: ${selectedAccounts.length}/${accounts.length} account(s) selected `
-        + `with ADOBE_SCRIPT_ACCOUNT_LIMIT=${SCRIPT_ACCOUNT_LIMIT}.`,
+      + `with ADOBE_SCRIPT_ACCOUNT_LIMIT=${SCRIPT_ACCOUNT_LIMIT}.`,
     );
   }
 
@@ -53,19 +53,15 @@ if (selectedAccounts.length === 0) {
 
         stepTracker.setStep("Wait for Adobe Dashboard");
         await adobe.waitForDashboard();
-        console.log("Login flow completed successfully");
+
+        stepTracker.setStep("Activate by Lets Go");
+        await adobe.handle_letsGo(loginAccount);
 
         if (process.env.ADOBE_STOP_AFTER_LOGIN?.trim() === "1") {
           return;
         }
 
-        const letsGoHandled = await adobe.handle_letsGoIfPresent(2000);
-        if (letsGoHandled) {
-          stepTracker.setStep("Activate by Lets Go");
-          console.log("Activated by Lets Go");
-        } else {
-          console.log("Lets Go button not present; continuing");
-        }
+
 
         // stepTracker.setStep('Redirect to edit');
         // await adobe.shortcut();

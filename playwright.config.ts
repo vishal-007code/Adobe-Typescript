@@ -19,14 +19,15 @@ export default defineConfig({
     [path.resolve(__dirname, 'src/adobe/reporter.ts')],
   ],
   timeout: 360_000,
-  expect:{
+  expect: {
     timeout: 120_000,
   },
   use: {
     actionTimeout: 120_000,
     navigationTimeout: 240_000,
-    trace: 'on',
-    video: 'on',
+    trace: 'retain-on-failure',
+    video: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     headless: true,
   },
   projects: [

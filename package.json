@@ -14,7 +14,7 @@
     "test:infra": "playwright test --project=internal-chromium"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^25.6.0",
     "typescript": "^5.5.3"
   },
