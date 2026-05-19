@@ -15,6 +15,7 @@ export class AdobePage {
     readonly cmp_option: Locator;
     readonly genratedImg: Locator;
     readonly letsGoIndicator: Locator;
+    readonly emailTypeDelayMs: number;
 
     constructor(page: Page) {
         this.page = page;
@@ -42,6 +43,8 @@ export class AdobePage {
         this.letsGoIndicator = page.getByRole('heading', {
             name: /Help us customize your experience\./i
         });
+
+        this.emailTypeDelayMs = resolvePositiveIntEnv('ADOBE_EMAIL_TYPE_DELAY_MS', 12);
     }
 
     async adb_login(): Promise<void> {
@@ -60,8 +63,8 @@ export class AdobePage {
         await this.email_field.waitFor({ state: 'visible', timeout: 60000 });
         await this.email_field.click();
         await this.email_field.clear();
-        await this.email_field.pressSequentially(email, { delay: 30 });
-        await this.page.waitForTimeout(300);
+        await this.email_field.pressSequentially(email, { delay: this.emailTypeDelayMs });
+        await this.page.waitForTimeout(120);
         await this.email_field_continue.click();
     }
 
@@ -271,7 +274,14 @@ export class AdobePage {
                     console.log(`[LETS_GO] Playwright click fired on attempt ${attempt} for ${email}`);
                 } else {
                     // Fallback for Adobe Spectrum web component / SP-BUTTON cases.
-                    await primaryCta.evaluate((el: HTMLElement) => el.click());
+                    await primaryCta.evaluate((el: Element) => {
+                        const host = el as HTMLElement;
+                        host.click();
+
+                        const root = (host as unknown as { shadowRoot?: ShadowRoot | null }).shadowRoot;
+                        const innerButton = root?.querySelector('button') as HTMLButtonElement | null;
+                        innerButton?.click();
+                    });
                     console.log(`[LETS_GO] JS click fired on attempt ${attempt} for ${email}`);
                 }
 
@@ -288,6 +298,7 @@ export class AdobePage {
                 }
 
                 console.log(`[LETS_GO] Modal still visible after attempt ${attempt} for ${email}`);
+                await this.page.keyboard.press('Enter').catch(() => undefined);
                 await this.debugLetsGoButtons(email, `Modal still visible after attempt ${attempt}`);
 
             } catch (error) {
@@ -307,4 +318,18 @@ export class AdobePage {
         console.log(`Login flow completed successfully for ${email}`);
         return;
     }
+}
+
+function resolvePositiveIntEnv(name: string, fallback: number): number {
+    const raw = process.env[name]?.trim();
+    if (!raw) {
+        return fallback;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        return fallback;
+    }
+
+    return parsed;
 }

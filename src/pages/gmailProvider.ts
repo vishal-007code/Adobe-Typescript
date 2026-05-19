@@ -8,6 +8,7 @@ export class GmailProvider {
     readonly i_understand_button : Locator;
     readonly confirm_signIn_msg : Locator;
     readonly confirm_sign_in_button  : Locator;
+    readonly keypressDelayMs: number;
 
     constructor(page: Page) {
         this.page = page;
@@ -17,17 +18,18 @@ export class GmailProvider {
         this.i_understand_button = page.getByRole('button', { name: /I understand/i });
         this.confirm_signIn_msg = page.getByText('Sign in to Adobe');
         this.confirm_sign_in_button = page.getByRole('button', { name: /^Continue$/i });
+        this.keypressDelayMs = resolvePositiveIntEnv('ADOBE_PROVIDER_KEYPRESS_DELAY_MS', 250);
     }
 
     async g_email_field( email : string ): Promise<void> {
         await this.email_field.fill(email);
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(this.keypressDelayMs);
         await this.email_field.press("Enter");
     }
 
     async g_password_field( password : string ): Promise<void> {
         await this.password_field.fill(password);
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(this.keypressDelayMs);
         await this.password_field.press("Enter");
     }
 
@@ -59,4 +61,18 @@ export class GmailProvider {
     }
 
 
+}
+
+function resolvePositiveIntEnv(name: string, fallback: number): number {
+    const raw = process.env[name]?.trim();
+    if (!raw) {
+        return fallback;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        return fallback;
+    }
+
+    return parsed;
 }

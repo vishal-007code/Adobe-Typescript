@@ -6,6 +6,7 @@ export class MsProvider {
     readonly password_field: Locator;
     readonly stay_signIn_msg: Locator;
     readonly reject_stay_sign_in: Locator;
+    readonly keypressDelayMs: number;
 
 
     constructor(page: Page) {
@@ -14,18 +15,19 @@ export class MsProvider {
         this.password_field = page.getByPlaceholder('Password');
         this.stay_signIn_msg = page.getByText('Stay signed in?');
         this.reject_stay_sign_in = page.locator('input[type="button"]');
+        this.keypressDelayMs = resolvePositiveIntEnv('ADOBE_PROVIDER_KEYPRESS_DELAY_MS', 250);
 
     }
 
     async ms_email_field( email : string ): Promise<void> {
         await this.email_field.fill(email);
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(this.keypressDelayMs);
         await this.email_field.press("Enter");
     }
 
     async ms_password_field( password : string ): Promise<void> {
         await this.password_field.fill(password);
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(this.keypressDelayMs);
         await this.password_field.press("Enter");
     }
 
@@ -56,4 +58,18 @@ export class MsProvider {
         }
     }
 
+}
+
+function resolvePositiveIntEnv(name: string, fallback: number): number {
+    const raw = process.env[name]?.trim();
+    if (!raw) {
+        return fallback;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+        return fallback;
+    }
+
+    return parsed;
 }
