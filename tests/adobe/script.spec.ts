@@ -33,36 +33,11 @@ defineAdobeAccountTests(
     await adobe.waitForDashboard();
 
     stepTracker.setStep("Activate by Lets Go");
-
-    const letsGoBtn = page.getByTestId("x-dialog-primary-cta");
-
-    try {
-      await letsGoBtn.waitFor({
-        state: "visible",
-        timeout: 15000,
-      });
-
-      await page.waitForTimeout(2000);
-
-      // Real click
-      await letsGoBtn.click({
-        timeout: 10000,
-      });
-
-      console.log("Lets Go clicked");
-
-      // Confirm popup/button disappeared
-      await letsGoBtn.waitFor({
-        state: "hidden",
-        timeout: 10000,
-      });
-
-      console.log("Lets Go popup closed successfully");
-    } catch (e) {
-      console.log("Lets Go handling failed:", e);
-      throw new Error(
-        "Lets Go handling failed. Check Playwright video/trace artifacts for this account."
-      );
+    await adobe.handle_letsGo(account);
+    
+    if (process.env.ADOBE_STOP_AFTER_LETS_GO?.trim() === "1") {
+      stepTracker.setStep("Stop after Lets Go");
+      return;
     }
 
     stepTracker.setStep("Redirect to edit");

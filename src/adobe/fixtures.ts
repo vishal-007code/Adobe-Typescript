@@ -1,4 +1,4 @@
-import type { BrowserContextOptions } from '@playwright/test';
+import type { BrowserContextOptions, Page, TestInfo } from '@playwright/test';
 import { expect, test as base } from '@playwright/test';
 import { appendConsumedFragment } from './report-files';
 import { ADOBE_ACCOUNT_ATTACHMENT, ADOBE_STEP_ATTACHMENT, requireAdobeRunId } from './runtime';
@@ -95,11 +95,13 @@ export const test = base.extend<AdobeFixtures & AdobeTestOptions>({
       },
     );
 
-    const context = await browser.newContext(buildContextOptions(testInfo.project.use));
+    const context = await browser.newContext(buildContextOptions(testInfo.project.use, testInfo.outputDir));
     try {
       await use(context);
     } finally {
+      const pages = context.pages();
       await context.close();
+      await attachContextVideos(pages, testInfo);
     }
   },
 });
@@ -112,7 +114,7 @@ function assertAssignedAccount(account: AdobeAccount | undefined, testTitle: str
   }
 }
 
-function buildContextOptions(useOptions: Record<string, unknown>): BrowserContextOptions {
+function buildContextOptions(useOptions: Record<string, unknown>, outputDir: string): BrowserContextOptions {
   const contextOptions: Record<string, unknown> = {};
   for (const key of CONTEXT_OPTION_KEYS) {
     if (key === 'baseURL') {
@@ -123,7 +125,39 @@ function buildContextOptions(useOptions: Record<string, unknown>): BrowserContex
       contextOptions[key] = value;
     }
   }
+  if (!contextOptions.recordVideo && shouldRecordVideo(useOptions.video)) {
+    contextOptions.recordVideo = {
+      dir: outputDir,
+    };
+  }
   return contextOptions as BrowserContextOptions;
+}
+
+function shouldRecordVideo(videoSetting: unknown): boolean {
+  if (videoSetting === 'off' || videoSetting === false || videoSetting === undefined || videoSetting === null) {
+    return false;
+  }
+  return true;
+}
+
+async function attachContextVideos(pages: Page[], testInfo: TestInfo): Promise<void> {
+  let index = 1;
+  for (const page of pages) {
+    const video = page.video();
+    if (!video) {
+      continue;
+    }
+    try {
+      const path = await video.path();
+      await testInfo.attach(`video-${index}`, {
+        path,
+        contentType: 'video/webm',
+      });
+      index += 1;
+    } catch {
+      // Ignore video attach failures; test result should still be reported.
+    }
+  }
 }
 
 export type { AdobeFixtures, AdobeTestOptions };

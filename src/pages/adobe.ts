@@ -16,6 +16,7 @@ export class AdobePage {
     readonly genratedImg: Locator;
     readonly letsGoIndicator: Locator;
     readonly emailTypeDelayMs: number;
+    readonly letsGoAppearTimeoutMs: number;
 
     constructor(page: Page) {
         this.page = page;
@@ -45,6 +46,7 @@ export class AdobePage {
         });
 
         this.emailTypeDelayMs = resolvePositiveIntEnv('ADOBE_EMAIL_TYPE_DELAY_MS', 12);
+        this.letsGoAppearTimeoutMs = resolvePositiveIntEnv('ADOBE_LETS_GO_APPEAR_TIMEOUT_MS', 60000);
     }
 
     async adb_login(): Promise<void> {
@@ -217,7 +219,7 @@ export class AdobePage {
         const strictLetsGo = resolveBooleanEnv('ADOBE_STRICT_LETS_GO', true);
 
         const modalVisible = await modalHeading
-            .waitFor({ state: 'visible', timeout: 15000 })
+            .waitFor({ state: 'visible', timeout: this.letsGoAppearTimeoutMs })
             .then(() => true)
             .catch(() => false);
 

@@ -42,6 +42,8 @@ export ADOBE_ACCOUNTS_CSV=accounts.csv
 export ADOBE_VIDEO_MODE=on
 export ADOBE_DEBUG_ARTIFACTS=1
 export ADOBE_PLAYWRIGHT_WORKERS=1
+export ADOBE_LETS_GO_APPEAR_TIMEOUT_MS=60000
+export ADOBE_STOP_AFTER_LETS_GO=1
 
 npm run test:adobe
 ```
@@ -95,6 +97,13 @@ gcloud run jobs executions list --job=adobe-login-flow --region=asia-south1 --pr
 ## 3) 20k production execution in batches
 
 Use built-in batch launcher. It splits CSV and runs multiple Cloud Run jobs in parallel.
+
+Cloud Run scripts now default to Let's-Go-only hardened mode:
+- `ADOBE_STOP_AFTER_LETS_GO=1`
+- `ADOBE_LETS_GO_APPEAR_TIMEOUT_MS=60000`
+- `ADOBE_STRICT_LETS_GO=1`
+- `ADOBE_VIDEO_MODE=off`
+- `ADOBE_DEBUG_ARTIFACTS=0`
 
 ```bash
 cd ~/Playwright-TS
