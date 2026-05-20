@@ -214,9 +214,7 @@ export class AdobePage {
         });
 
         const noneOfAboveButton = this.page.getByTestId('x-dialog-secondary-cta');
-
-        // Use CSS locator directly. This avoids fragile text matching and works with the SP-BUTTON custom element.
-        const primaryCta = this.page.locator('[data-testid="x-dialog-primary-cta"]').first();
+        const strictLetsGo = resolveBooleanEnv('ADOBE_STRICT_LETS_GO', true);
 
         const modalVisible = await modalHeading
             .waitFor({ state: 'visible', timeout: 15000 })
@@ -251,38 +249,43 @@ export class AdobePage {
                     await this.page.waitForTimeout(500);
                 }
 
-                const primaryAttached = await primaryCta
-                    .count()
-                    .then((count) => count > 0)
-                    .catch(() => false);
+                const candidates: Locator[] = [
+                    this.page.locator('[data-testid="x-dialog-primary-cta"]').first(),
+                    this.page.getByRole('button', { name: /let'?s go|continue|get started|next/i }).first(),
+                    this.page.locator('sp-button:has-text("Let\'s go")').first(),
+                    this.page.locator('button:has-text("Let\'s go")').first(),
+                ];
 
-                if (!primaryAttached) {
-                    console.log(`[LETS_GO] Primary CTA not attached for ${email}; debug and continue`);
-                    await this.debugLetsGoButtons(email, `Primary CTA not attached`);
-                    console.log(`Login flow completed successfully for ${email}`);
-                    return;
+                let clicked = false;
+                for (const candidate of candidates) {
+                    const attached = await candidate.count().then((count) => count > 0).catch(() => false);
+                    if (!attached) {
+                        continue;
+                    }
+
+                    const visible = await candidate.isVisible({ timeout: 1500 }).catch(() => false);
+                    if (!visible) {
+                        continue;
+                    }
+
+                    await candidate.scrollIntoViewIfNeeded().catch(() => undefined);
+                    await candidate.click({ timeout: 4000, force: attempt === 2 }).catch(async () => {
+                        await candidate.evaluate((el: Element) => {
+                            const host = el as HTMLElement;
+                            host.click();
+                            const root = (host as unknown as { shadowRoot?: ShadowRoot | null }).shadowRoot;
+                            const innerButton = root?.querySelector('button') as HTMLButtonElement | null;
+                            innerButton?.click();
+                        });
+                    });
+
+                    clicked = true;
+                    console.log(`[LETS_GO] CTA click fired on attempt ${attempt} for ${email}`);
+                    break;
                 }
 
-                // Try Playwright click first if visible.
-                const primaryVisible = await primaryCta
-                    .isVisible({ timeout: 3000 })
-                    .catch(() => false);
-
-                if (primaryVisible) {
-                    await primaryCta.scrollIntoViewIfNeeded().catch(() => undefined);
-                    await primaryCta.click({ timeout: 5000, force: attempt === 2 });
-                    console.log(`[LETS_GO] Playwright click fired on attempt ${attempt} for ${email}`);
-                } else {
-                    // Fallback for Adobe Spectrum web component / SP-BUTTON cases.
-                    await primaryCta.evaluate((el: Element) => {
-                        const host = el as HTMLElement;
-                        host.click();
-
-                        const root = (host as unknown as { shadowRoot?: ShadowRoot | null }).shadowRoot;
-                        const innerButton = root?.querySelector('button') as HTMLButtonElement | null;
-                        innerButton?.click();
-                    });
-                    console.log(`[LETS_GO] JS click fired on attempt ${attempt} for ${email}`);
+                if (!clicked) {
+                    console.log(`[LETS_GO] No clickable CTA found on attempt ${attempt} for ${email}`);
                 }
 
                 const modalGone = await modalHeading
@@ -314,9 +317,13 @@ export class AdobePage {
             fullPage: true
         }).catch(() => undefined);
 
-        console.log(`[LETS_GO] Could not close modal after retry for ${email}; continuing after debug`);
+        const unresolvedMessage = `[LETS_GO] Could not close modal after retry for ${email}`;
+        if (strictLetsGo) {
+            throw new Error(unresolvedMessage);
+        }
+
+        console.log(`${unresolvedMessage}; continuing because ADOBE_STRICT_LETS_GO=0`);
         console.log(`Login flow completed successfully for ${email}`);
-        return;
     }
 }
 
@@ -332,4 +339,19 @@ function resolvePositiveIntEnv(name: string, fallback: number): number {
     }
 
     return parsed;
+}
+
+function resolveBooleanEnv(name: string, fallback: boolean): boolean {
+    const raw = process.env[name]?.trim().toLowerCase();
+    if (!raw) {
+        return fallback;
+    }
+
+    if (raw === '1' || raw === 'true' || raw === 'yes') {
+        return true;
+    }
+    if (raw === '0' || raw === 'false' || raw === 'no') {
+        return false;
+    }
+    return fallback;
 }

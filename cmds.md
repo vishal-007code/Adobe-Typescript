@@ -2,6 +2,13 @@
 
 This runbook keeps the existing flow and uses only env/config knobs already in the repo.
 
+## 0) Pull latest changes on server
+
+```bash
+cd ~/Playwright-TS
+git pull
+```
+
 ## 1) Local verification with first 100 accounts
 
 ```powershell
@@ -22,6 +29,27 @@ Optional (force stable browser timezone across local/server):
 
 ```powershell
 $env:TZ="Asia/Kolkata"
+```
+
+## 1.1) Server run with forced Playwright video capture (for Let's Go debugging)
+
+Run from Linux shell:
+
+```bash
+cd ~/Playwright-TS
+
+export ADOBE_ACCOUNTS_CSV=accounts.csv
+export ADOBE_VIDEO_MODE=on
+export ADOBE_DEBUG_ARTIFACTS=1
+export ADOBE_PLAYWRIGHT_WORKERS=1
+
+npm run test:adobe
+```
+
+Find generated videos:
+
+```bash
+find test-results -type f -name "*.webm"
 ```
 
 ## 2) Server verification with first 100 accounts (Cloud Run Job)
@@ -46,6 +74,8 @@ export ADOBE_SSL_BYPASS=1
 export ADOBE_STOP_AFTER_LOGIN=1
 export ADOBE_EMAIL_TYPE_DELAY_MS=12
 export ADOBE_PROVIDER_KEYPRESS_DELAY_MS=250
+export ADOBE_VIDEO_MODE=on
+export ADOBE_DEBUG_ARTIFACTS=1
 
 export CPU=2
 export MEMORY=2Gi
@@ -86,6 +116,10 @@ export ADOBE_STOP_AFTER_LOGIN=1
 export TASK_TIMEOUT=8h
 export AVG_SECONDS_PER_ACCOUNT=90
 
+# Keep video capture off for massive runs unless specifically debugging.
+# export ADOBE_VIDEO_MODE=on
+# export ADOBE_DEBUG_ARTIFACTS=1
+
 bash scripts/run-cloud-run-account-batches.sh
 ```
 
@@ -118,3 +152,39 @@ active_concurrency = PARALLELISM * ADOBE_PLAYWRIGHT_WORKERS
 ```
 
 Increase `PARALLELISM` first, then `ADOBE_PLAYWRIGHT_WORKERS` only if CPU/memory headroom exists.
+
+## 5) Count "Let's go" clicks/results
+
+### A) From result CSV (best signal for success/failure at that step)
+
+PowerShell (local):
+
+```powershell
+$csv = "reports\adobe_results_20260519T071852Z.csv"  # replace with your latest file
+$rows = Import-Csv $csv
+
+"Total: $($rows.Count)"
+"Passed: $((($rows | Where-Object { $_.test_status -eq 'passed' })).Count)"
+"Failed at Lets Go: $((($rows | Where-Object { $_.failed_at_step -eq 'Activate by Lets Go' })).Count)"
+"Failed (all): $((($rows | Where-Object { $_.test_status -eq 'failed' })).Count)"
+```
+
+### B) From Cloud Run logs (count actual click-fire log lines)
+
+```bash
+gcloud logging read \
+'resource.type="cloud_run_job" AND resource.labels.job_name="adobe-login-flow" AND textPayload:"[LETS_GO] Playwright click fired"' \
+--project=new-adobe-type-496209 \
+--limit=100000 \
+--format='value(textPayload)' | wc -l
+```
+
+Optional: JS fallback click count in logs
+
+```bash
+gcloud logging read \
+'resource.type="cloud_run_job" AND resource.labels.job_name="adobe-login-flow" AND textPayload:"[LETS_GO] JS click fired"' \
+--project=new-adobe-type-496209 \
+--limit=100000 \
+--format='value(textPayload)' | wc -l
+```
