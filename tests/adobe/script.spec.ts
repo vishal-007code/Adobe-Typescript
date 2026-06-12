@@ -1,10 +1,11 @@
 import { defineAdobeAccountTests, expect } from '../../src/adobe/spec';
+import { ADOBE_LINK_ATTACHMENT } from '../../src/adobe/runtime';
 import { AdobePage } from "../../src/pages/adobe";
 import { GmailProvider } from "../../src/pages/gmailProvider";
 import { MsProvider} from "../../src/pages/msProvider";
 import { EditorDashboard } from '../../src/pages/editorDashboard';
 
-defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }) => {
+defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, testInfo) => {
     const adobe = new AdobePage(page);
     const editor = new EditorDashboard(page);
     const ms = new MsProvider(page);
@@ -63,6 +64,12 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }) =>
   const link = await editor.clickCopyLink();
   console.log('Link Copied: ' + link);
   expect(link).toBeTruthy();
+
+  // Attach published link to test results for CSV report
+  await testInfo.attach(ADOBE_LINK_ATTACHMENT, {
+    body: Buffer.from(JSON.stringify({ publishedLink: link }), 'utf8'),
+    contentType: 'application/json',
+  });
 
   
 //   stepTracker.setStep('Download');

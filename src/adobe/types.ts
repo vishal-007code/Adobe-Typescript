@@ -29,6 +29,7 @@ export type AdobeResultRow = {
   failed_at_step: string;
   failure_reason: string;
   duration_ms: string;
+  published_link: string;
 };
 
 export type AdobeConsumedRow = {

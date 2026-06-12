@@ -31,6 +31,7 @@ export function appendResultFragment(row: AdobeResultRow, location: FragmentLoca
     row.failed_at_step,
     row.failure_reason,
     row.duration_ms,
+    row.published_link,
   ]);
 }
 
@@ -59,6 +60,7 @@ export function mergeAdobeRunArtifacts(options: {
       row.failed_at_step,
       row.failure_reason,
       row.duration_ms,
+      row.published_link,
     ]),
   );
 
