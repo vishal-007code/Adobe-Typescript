@@ -1,6 +1,6 @@
 import type { FullResult, Reporter, TestCase, TestError, TestResult } from '@playwright/test/reporter';
 import { appendResultFragment, mergeAdobeRunArtifacts } from './report-files';
-import { ADOBE_ACCOUNT_ATTACHMENT, ADOBE_STEP_ATTACHMENT, requireAdobeRunId } from './runtime';
+import { ADOBE_ACCOUNT_ATTACHMENT, ADOBE_LINK_ATTACHMENT, ADOBE_STEP_ATTACHMENT, requireAdobeRunId } from './runtime';
 import type { AdobeResultStatus } from './types';
 
 export default class AdobeCsvReporter implements Reporter {
@@ -19,6 +19,7 @@ export default class AdobeCsvReporter implements Reporter {
     this.sawAdobeSuiteTest = true;
     const accountMetadata = readJsonAttachment<{ email?: string }>(result, ADOBE_ACCOUNT_ATTACHMENT);
     const stepMetadata = readJsonAttachment<{ lastStep?: string }>(result, ADOBE_STEP_ATTACHMENT);
+    const linkMetadata = readJsonAttachment<{ publishedLink?: string }>(result, ADOBE_LINK_ATTACHMENT);
     const mappedStatus = mapStatus(result.status);
 
     appendResultFragment(
@@ -29,6 +30,7 @@ export default class AdobeCsvReporter implements Reporter {
         failed_at_step: mappedStatus === 'failed' ? stepMetadata?.lastStep?.trim() ?? '' : '',
         failure_reason: getFailureReason(test, result, mappedStatus),
         duration_ms: String(result.duration),
+        published_link: linkMetadata?.publishedLink?.trim() ?? '',
       },
       {
         runId: this.runId,

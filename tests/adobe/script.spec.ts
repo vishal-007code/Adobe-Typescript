@@ -1,12 +1,18 @@
 import { defineAdobeAccountTests, expect } from '../../src/adobe/spec';
+import { ADOBE_LINK_ATTACHMENT } from '../../src/adobe/runtime';
 import { AdobePage } from "../../src/pages/adobe";
 import { GmailProvider } from "../../src/pages/gmailProvider";
 import { MsProvider} from "../../src/pages/msProvider";
+import { EditorDashboard } from '../../src/pages/editorDashboard';
 
-defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }) => {
+defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, testInfo) => {
     const adobe = new AdobePage(page);
+    const editor = new EditorDashboard(page);
     const ms = new MsProvider(page);
     const ggl = new GmailProvider(page);
+
+  // Start intercepting UDS requests to capture auth credentials for API-based Let's Go dismissal
+  adobe.startUdsCapture();
 
   stepTracker.setStep('open login');
   await adobe.adb_login()
@@ -30,24 +36,47 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }) =>
   stepTracker.setStep('Wait for Adobe Dashboard');
   await adobe.waitForDashboard();
 
-  // const letsGoVisibleIndicator = await adobe.isLetsGoIndicator_Visible();
-  //
-  // // if (letsGoVisibleIndicator) {
-  //   stepTracker.setStep('Activate by Lets Go');
-  //   await adobe.handle_letsGo();
-  // // }
+  stepTracker.setStep('Activate by Lets Go');
+  await adobe.skipLetsGoViaAPI(account.email);
 
   stepTracker.setStep('Redirect to edit');
   await adobe.shortcut();
-
+  
   stepTracker.setStep('Wait for Img Generation');
   await adobe.wait_for_generation();
 
-  stepTracker.setStep('Download');
-  const filePath = await adobe.download_img();
+  stepTracker.setStep('Open In Editor');
+  await editor.clickOpenInEditor();
 
-  // 3. Optional: Assertion to verify the download happened
-  console.log(`File saved to: ${filePath}`);
-  expect(filePath).toBeTruthy();
+  stepTracker.setStep('Skip Tutorial dialog if visible');
+  await editor.skipTutorial();
+
+  stepTracker.setStep('Click Share button');
+  await editor.clickShare();
+
+  stepTracker.setStep('Open View Only Link');
+  await editor.openViewOnlyLink();
+
+  stepTracker.setStep('Click Create Link button');
+  await editor.clickCreateLink();
+
+  stepTracker.setStep('Click Copy Link button');
+  const link = await editor.clickCopyLink();
+  console.log('Link Copied: ' + link);
+  expect(link).toBeTruthy();
+
+  // Attach published link to test results for CSV report
+  await testInfo.attach(ADOBE_LINK_ATTACHMENT, {
+    body: Buffer.from(JSON.stringify({ publishedLink: link }), 'utf8'),
+    contentType: 'application/json',
+  });
+
+  
+//   stepTracker.setStep('Download');
+//   const filePath = await adobe.download_img();
+  
+//   // 3. Optional: Assertion to verify the download happened
+//   console.log(`File saved to: ${filePath}`);
+//   expect(filePath).toBeTruthy();
 
 });
