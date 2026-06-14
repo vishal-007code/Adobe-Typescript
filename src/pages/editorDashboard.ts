@@ -32,12 +32,24 @@ export class EditorDashboard {
     }
 
     async skipTutorial(): Promise<void> {
+        // 1. Try to skip tutorial tour (if visible)
         try {
-            await this.skipTutorial_btn.waitFor({ state: 'visible', timeout: 20000 });
-            await this.skipTutorial_btn.click({ timeout: 5000 });
-            // await this.page.waitForLoadState('networkidle', { timeout: 5000 });
-        } catch {
-            console.log('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  Tutorial NOT VISIBLE  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx');
+            const skipTourBtn = this.page.getByRole('button', { name: 'Skip tour' }).or(this.page.getByText('Skip tour'));
+            if (await skipTourBtn.isVisible()) {
+                await skipTourBtn.click({ timeout: 5000 });
+            }
+        } catch (e) {
+            console.log('skipTutorial: error checking/clicking Skip tour', e);
+        }
+
+        // 2. Try to dismiss quick tips / popups (if visible)
+        try {
+            const gotItBtn = this.page.getByRole('button', { name: 'Got it' }).or(this.page.getByText('Got it'));
+            if (await gotItBtn.isVisible()) {
+                await gotItBtn.click({ timeout: 5000 });
+            }
+        } catch (e) {
+            console.log('skipTutorial: error checking/clicking Got it', e);
         }
     }
 
@@ -55,7 +67,8 @@ export class EditorDashboard {
         try {
             await expect(this.viewOnlyLink).toBeEnabled({ timeout: 20000 });
             await this.viewOnlyLink.click({ timeout: 20000 });
-            // await this.page.waitForLoadState('networkidle', { timeout: 5000 });
+            // Verify the "View-only link" sub-panel actually opened
+            await this.page.getByText('A view-only link allows anyone to see the file').waitFor({ state: 'visible', timeout: 15000 });
         } catch (e) {
             console.log('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  View Only Link NOT VISIBLE  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', e);
         }
@@ -65,7 +78,8 @@ export class EditorDashboard {
         try {
             await expect(this.createLinkBtn).toBeEnabled({ timeout: 20000 });
             await this.createLinkBtn.click({ timeout: 20000 });
-            // await this.page.waitForLoadState('networkidle', { timeout: 5000 });
+            // Wait for the Copy link button to appear (indicates link generation started)
+            await expect(this.copyLinkBtn).toBeVisible({ timeout: 30000 });
         } catch (e) {
             console.log('xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  Create Link Button NOT VISIBLE  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', e);
         }
@@ -75,7 +89,10 @@ export class EditorDashboard {
         try {
             await expect(this.copyLinkBtn).toBeEnabled({ timeout: 20000 });
             await this.copyLinkBtn.click({ timeout: 20000 });
-            // await this.page.waitForLoadState('networkidle', { timeout: 5000 });
+
+            // Wait for the Published URL input to have a non-empty value (fixes race condition & pierces Shadow DOM)
+            await expect(this.publishUrl).toHaveValue(/https:\/\/new\.express\.adobe\.com/, { timeout: 30000 });
+
             const link = await this.publishUrl.inputValue() ?? '';
             console.log('Publish Link: ', link);
             return link.trim();

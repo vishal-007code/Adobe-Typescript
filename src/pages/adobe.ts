@@ -62,9 +62,9 @@ export class AdobePage {
     }
 
     async wait_for_generation(): Promise<void> {
-        await expect(this.genratedImg).toBeVisible();
-        await expect(this.downld_icon).toBeEnabled();
-        await expect(this.loadIndicator).toHaveCount(0);
+        await expect(this.genratedImg).toBeVisible({ timeout: 180_000 });
+        await expect(this.downld_icon).toBeEnabled({ timeout: 30_000 });
+        await expect(this.loadIndicator).toHaveCount(0, { timeout: 30_000 });
     }
 
     async download_img(): Promise<string | null> {
@@ -105,10 +105,19 @@ export class AdobePage {
     }
 
     async waitForDashboard(): Promise<void> {
-        try{
-            await this.page.waitForURL(/new.express.adobe.com/);
+        try {
+            await this.page.waitForURL(/new.express.adobe.com/, { timeout: 120_000 });
             await expect(this.page).toHaveURL(/.*new\.express\.adobe\.com/);
-        } catch(e){}
+        } catch (e) {
+            throw new Error(`Failed to navigate to Adobe Dashboard (new.express.adobe.com). Login likely failed. Original error: ${e}`);
+        }
+
+        try {
+            // Wait for network to settle so UDS requests fire and auth credentials are captured
+            await this.page.waitForLoadState('load', { timeout: 30_000 });
+        } catch (e) {
+            console.log('waitForDashboard: page load did not fully settle on Load', e);
+        }
     }
 
     async isLetsGoIndicator_Visible(): Promise<boolean> {
@@ -122,7 +131,18 @@ export class AdobePage {
     }
 
     async shortcut(): Promise<void> {
-       await this.page.goto("https://new.express.adobe.com/new?category=media&action=text+to+image&width=1080&height=1080&intent=general&neural-style=digital&contentClasses=art&prompt=Festival&tab=all")
+        const shortcutUrl = "https://new.express.adobe.com/new?category=media&action=text+to+image&width=1080&height=1080&intent=general&neural-style=digital&contentClasses=art&prompt=Festival&tab=all";
+        
+        try {
+            await this.page.goto(shortcutUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        } catch (error: any) {
+            console.log(`shortcut: Initial navigation interrupted (${error.message}). Retrying...`);
+            await this.page.waitForTimeout(3000); // Wait for redirect to settle on dashboard
+            await this.page.goto(shortcutUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        }
+        
+        // Wait for the page to stabilize after redirect
+        await this.page.waitForLoadState('load', { timeout: 60_000 }).catch(() => {});
     }
 
     async handle_letsGo(loginAccount: String): Promise<void> {

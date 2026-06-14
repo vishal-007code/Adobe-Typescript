@@ -26,7 +26,7 @@ export default defineConfig({
     navigationTimeout: 240_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    headless: false,
+    headless: true,
   },
   projects: [
     {
