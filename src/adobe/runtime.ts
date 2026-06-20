@@ -39,6 +39,10 @@ export function getAdobeResultsPath(now: Date = new Date(), cwd: string = proces
   return path.join(getReportsDir(cwd), `adobe_results_${timestamp}.csv`);
 }
 
+export function getAdobeResultsPathForRun(runId: string, cwd: string = process.cwd()): string {
+  return path.join(getReportsDir(cwd), `adobe_results_${runId}.csv`);
+}
+
 export function requireAdobeRunId(env: NodeJS.ProcessEnv = process.env): string {
   const runId = env.ADOBE_RUN_ID?.trim();
   if (!runId) {
