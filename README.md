@@ -4,7 +4,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-v5.5.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Engine](https://img.shields.io/badge/OS-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](#)
 
-A premium, data-driven end-to-end automation framework for **Adobe Express** (`new.express.adobe.com`). This repository orchestrates federated authentication, bypasses complex onboarding indicators, generates AI assets, and manages public sharing links while tracking single-use account consumption with a strict ledger.
+A premium, data-driven end-to-end automation framework for **Adobe Express** (`new.express.adobe.com`). This repository orchestrates federated authentication, bypasses complex onboarding indicators, creates design canvases from templates, and manages public sharing links while tracking single-use account consumption with a strict ledger.
 
 ---
 
@@ -87,14 +87,14 @@ flowchart TD
     E --> G["6 — Wait for Dashboard Load"]
     F --> G
     G --> H["7 — Dismiss Onboarding Popups (API / UI)"]
-    H --> I["8 — Navigate to Generator URL"]
-    I --> J["9 — Wait for Image Generation"]
-    J --> K["10 — Transition to Editor Canvas"]
-    K --> L["11 — Dismiss Tutorials & Quick Tips"]
+    H --> I["8 — Create Template (Square canvas)"]
+    I --> J["9 — Skip Tutorial coachmark (auto-handler)"]
+    J --> K["10 — Search Template (random keyword)"]
+    K --> L["11 — Select Template (first result)"]
     L --> M["12 — Open Sharing Menu"]
-    M --> N["13 — Navigate to View-only link Menu"]
+    M --> N["13 — Open View-only link (≤180s prep)"]
     N --> O["14 — Create / Publish sharing URL"]
-    O --> P["15 — Verify URL populated in Shadow DOM & Copy"]
+    O --> P["15 — Copy published link"]
     P --> Q["16 — Save URL to Reports CSV"]
 ```
 
@@ -109,14 +109,14 @@ flowchart TD
 | **5** | `Login with <Provider>` | [`g_login()` / `ms_login()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/gmailProvider.ts#L51) | `GmailProvider` / `MsProvider` | Log in through federated auth portal |
 | **6** | `Wait for Adobe Dashboard` | [`waitForDashboard()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/adobe.ts#L107) | `AdobePage` | Wait for URL pattern matching `new.express.adobe.com` |
 | **7** | `Activate by Lets Go` | [`skipLetsGoViaAPI(email)`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/adobe.ts#L188) | `AdobePage` | REST API skip for onboarding popup, falls back to UI click |
-| **8** | `Redirect to edit` | [`shortcut()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/adobe.ts#L133) | `AdobePage` | Navigate to Text-to-Image canvas with retry on redirect |
-| **9** | `Wait for Img Generation` | [`wait_for_generation()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/adobe.ts#L64) | `AdobePage` | Verify skeleton disappears and thumbnails render |
-| **10** | `Open In Editor` | [`clickOpenInEditor()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts#L24) | `EditorDashboard` | Click "Open in editor" |
-| **11** | `Skip Tutorial dialog if visible` | [`skipTutorial()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts#L34) | `EditorDashboard` | Dismisses "Skip Tour" or "Got it" tooltips |
-| **12** | `Click Share button` | [`clickShare()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts#L56) | `EditorDashboard` | Opens editor Share menu |
-| **13** | `Open View Only Link` | [`openViewOnlyLink()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts#L66) | `EditorDashboard` | Access public sharing options |
-| **14** | `Click Create Link button` | [`clickCreateLink()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts#L77) | `EditorDashboard` | Triggers URL compilation on backend |
-| **15** | `Click Copy Link button` | [`clickCopyLink()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts#L88) | `EditorDashboard` | Asserts input has value, reads URL, clicks Copy |
+| **8** | `Setup Canvas` | [`createTemplate()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/adobe.ts) | `AdobePage` | Click "Create new" → "Square" template to open the canvas |
+| **9** | `Skip Tutorial dialog if visible` | [`skipTutorial()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts) | `EditorDashboard` | Registers an `addLocatorHandler` that auto-dismisses the "Skip tour" coachmark whenever it appears; clears "Got it" |
+| **10** | `Search Template` | [`getRandomSearchKeyword()` + `searchForTemplate(keyword)`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/adobe.ts) | `AdobePage` | Pick a random keyword, type it into the search bar, submit with Enter |
+| **11** | `Select Template` | [`selectTemplate(keyword)`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/adobe.ts) | `AdobePage` | Assert results (format-tolerant), click first result via its own click handler (bypasses hover-preview/search-plugin overlays) |
+| **12** | `Click Share button` | [`clickShare()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts) | `EditorDashboard` | Opens editor Share menu |
+| **13** | `Open View Only Link` | [`openViewOnlyLink()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts) | `EditorDashboard` | Waits up to **180s** for the "View-only link" menuitem (slow file prep), then clicks it |
+| **14** | `Click Create Link button` | [`clickCreateLink()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts) | `EditorDashboard` | Click "Create link"; wait for the Copy-link button **or** the rendered published URL |
+| **15** | `Click Copy Link button` | [`clickCopyLink()`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/src/pages/editorDashboard.ts) | `EditorDashboard` | Click "Copy link" if present; read the `publishedV2` link from its `href` and return it |
 
 ---
 
@@ -199,4 +199,5 @@ $env:ADOBE_PASSWORD="password"
 ## ⚙️ Development Notes
 * **Headless Default:** Configured to run in `headless: true` mode in [`playwright.config.ts`](file:///c:/Users/QA/WebstormProjects/Adobe_V2/playwright.config.ts) for optimal performance in CI/CD and multi-worker pipelines.
 * **Timeouts:** Timed limits are set high (`360s` test timeout, `120s` expect timeout) to account for external latency during federated Google/Microsoft SSO and client-side page rendering.
-* **Shadow-DOM Navigation:** The share link copy logic asserts text presence inside shadow scopes using locator `expect(this.publishUrl).toHaveValue(/.../)` rather than document queries, bypassing nested browser restrictions.
+* **Share-panel variants:** The redesigned share panel renders the published link as an `<a href>` (not an input). `clickCopyLink()` reads the link via `expect(this.publishUrl).toHaveAttribute('href', /publishedV2/)`, and tolerates both the labeled "Copy link" button and the icon-only copy control.
+* **Coachmark auto-handler:** A `page.addLocatorHandler` registered in `skipTutorial()` auto-dismisses the "Try the updated editor" coachmark whenever its underlay appears, preventing it from intercepting clicks on later steps such as the template search bar.
