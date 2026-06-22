@@ -5,7 +5,7 @@ set -euo pipefail
 #  CONFIGURE THESE before running
 # ══════════════════════════════════════════════════════════
 PROJECT_ID="${GCP_PROJECT_ID:?Set GCP_PROJECT_ID}"
-REGION="${GCP_REGION:-us-central1}"
+REGION="${GCP_REGION:-asia-south1}"
 REPO="${ARTIFACT_REPO:-adobe-automation}"
 IMAGE_NAME="${IMAGE_NAME:-playwright-adobe}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${IMAGE_NAME}:latest"
@@ -15,9 +15,9 @@ SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"     # e.g. playwright-runner@PROJECT.iam.
 JOB_NAME="adobe-playwright-job"
 
 # Batch tuning
-TOTAL_ACCOUNTS=20577
+TOTAL_ACCOUNTS=100
 BATCH_SIZE="${BATCH_SIZE:-50}"             # accounts per Cloud Run task
-PARALLELISM="${PARALLELISM:-50}"           # tasks running at the same time
+PARALLELISM="${PARALLELISM:-2}"            # tasks running at the same time
 WORKERS_PER_TASK="${WORKERS_PER_TASK:-3}"  # Chromium workers inside each task
 MEMORY="${MEMORY:-4Gi}"
 CPU="${CPU:-2}"

@@ -6,13 +6,7 @@ import {
   ADOBE_NO_FRESH_ACCOUNTS_REASON,
   getAdobeConsumedLedgerPath,
 } from './runtime';
-import type {
-  AdobeAccount,
-  AdobeAccountShard,
-  AdobeAccountSource,
-  AdobeConsumedRow,
-  FreshAdobeAccountsResult,
-} from './types';
+import type { AdobeAccount, AdobeAccountSource, AdobeConsumedRow, FreshAdobeAccountsResult } from './types';
 
 export class AdobeConfigurationError extends Error {
   constructor(message: string) {
@@ -45,14 +39,11 @@ export function loadFreshAdobeAccounts(
   const accounts = dedupeAccounts(sourceAccounts, source.description);
   const consumedEmails = loadConsumedEmailSet(options.consumedLedgerPath ?? getAdobeConsumedLedgerPath(cwd));
   const freshAccounts = accounts.filter((account) => !consumedEmails.has(account.email));
-  const shard = resolveAdobeAccountShard(env);
-  const assignedAccounts = shard ? shardAccounts(freshAccounts, shard) : freshAccounts;
 
   return {
-    accounts: assignedAccounts,
+    accounts: freshAccounts,
     source,
-    shard,
-    skipReason: assignedAccounts.length === 0 ? ADOBE_NO_FRESH_ACCOUNTS_REASON : undefined,
+    skipReason: freshAccounts.length === 0 ? ADOBE_NO_FRESH_ACCOUNTS_REASON : undefined,
   };
 }
 
@@ -175,70 +166,6 @@ function loadAccountsFromCsv(filePath: string): AdobeAccount[] {
   }
 
   return accounts;
-}
-
-function resolveAdobeAccountShard(env: NodeJS.ProcessEnv): AdobeAccountShard | undefined {
-  const explicitIndex = env.ADOBE_ACCOUNT_SHARD_INDEX?.trim();
-  const explicitTotal = env.ADOBE_ACCOUNT_SHARD_TOTAL?.trim();
-  if (explicitIndex || explicitTotal) {
-    return {
-      ...parseShardPair(explicitIndex, explicitTotal, 'ADOBE_ACCOUNT_SHARD_INDEX', 'ADOBE_ACCOUNT_SHARD_TOTAL'),
-      source: 'env',
-    };
-  }
-
-  const cloudRunIndex = env.CLOUD_RUN_TASK_INDEX?.trim();
-  const cloudRunTotal = env.CLOUD_RUN_TASK_COUNT?.trim();
-  if (cloudRunIndex || cloudRunTotal) {
-    return {
-      ...parseShardPair(cloudRunIndex, cloudRunTotal, 'CLOUD_RUN_TASK_INDEX', 'CLOUD_RUN_TASK_COUNT'),
-      source: 'cloud-run',
-    };
-  }
-
-  return undefined;
-}
-
-function parseShardPair(
-  rawIndex: string | undefined,
-  rawTotal: string | undefined,
-  indexName: string,
-  totalName: string,
-): { index: number; total: number } {
-  if (!rawIndex || !rawTotal) {
-    throw new AdobeConfigurationError(`${indexName} and ${totalName} must both be set when account sharding is used.`);
-  }
-
-  const index = parseNonNegativeInteger(rawIndex, indexName);
-  const total = parsePositiveInteger(rawTotal, totalName);
-  if (index >= total) {
-    throw new AdobeConfigurationError(`${indexName} must be less than ${totalName}. Got ${index} >= ${total}.`);
-  }
-
-  return { index, total };
-}
-
-function parseNonNegativeInteger(value: string, name: string): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new AdobeConfigurationError(`${name} must be a non-negative integer. Got "${value}".`);
-  }
-  return parsed;
-}
-
-function parsePositiveInteger(value: string, name: string): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new AdobeConfigurationError(`${name} must be a positive integer. Got "${value}".`);
-  }
-  return parsed;
-}
-
-function shardAccounts(accounts: AdobeAccount[], shard: AdobeAccountShard): AdobeAccount[] {
-  if (shard.total === 1) {
-    return accounts;
-  }
-  return accounts.filter((_, index) => index % shard.total === shard.index);
 }
 
 function loadAccountFromEnv(env: NodeJS.ProcessEnv): AdobeAccount {
