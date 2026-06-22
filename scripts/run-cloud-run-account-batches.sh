@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ID="${PROJECT_ID:-new-adobe-type-496209}"
+PROJECT_ID="${PROJECT_ID:-project-517cd71a-7c2f-4e1b-af2}"
 REGION="${REGION:-asia-south1}"
-RUNTIME_SERVICE_ACCOUNT="${RUNTIME_SERVICE_ACCOUNT:-playwright-runner@new-adobe-type-496209.iam.gserviceaccount.com}"
+RUNTIME_SERVICE_ACCOUNT="${RUNTIME_SERVICE_ACCOUNT:-playwright-runner@${PROJECT_ID}.iam.gserviceaccount.com}"
 
 INPUT_CSV="${INPUT_CSV:-accounts.csv}"
 TOTAL_ACCOUNTS="${TOTAL_ACCOUNTS:-20898}"
