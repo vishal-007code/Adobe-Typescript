@@ -1,6 +1,6 @@
 # Adobe Express Playwright — Google Cloud Platform Setup Guide
 
-> **Last updated:** 2026-06-21
+> **Last updated:** 2026-06-22
 > **Scope:** End-to-end instructions for deploying and running the Adobe automation suite on GCP Cloud Run Jobs at scale (20,000+ accounts).
 
 ---
@@ -115,7 +115,7 @@ This is where your Docker image will be stored.
 ```bash
 gcloud artifacts repositories create adobe-automation \
   --repository-format=docker \
-  --location=us-central1 \
+  --location=asia-south1 \
   --description="Adobe Playwright automation images"
 ```
 
@@ -125,8 +125,8 @@ This bucket holds `accounts.csv` (input) and all results (output).
 
 ```bash
 # Replace YOUR_BUCKET_NAME with a globally unique name, e.g. mycompany-adobe-automation
-gcloud storage buckets create gs://YOUR_BUCKET_NAME \
-  --location=us-central1 \
+gcloud storage buckets create gs://accounts-auto \
+  --location=asia-south1 \
   --uniform-bucket-level-access
 ```
 
@@ -137,22 +137,22 @@ The Cloud Run tasks will run as this service account so they can read/write GCS.
 ```bash
 gcloud iam service-accounts create playwright-runner \
   --display-name="Adobe Playwright Runner" \
-  --project=YOUR_PROJECT_ID
+  --project=project-517cd71a-7c2f-4e1b-af2
 ```
 
 Grant it GCS read/write access:
 
 ```bash
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:playwright-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding project-517cd71a-7c2f-4e1b-af2 \
+  --member="serviceAccount:playwright-runner@project-517cd71a-7c2f-4e1b-af2.iam.gserviceaccount.com" \
   --role="roles/storage.objectAdmin"
 ```
 
 Grant Cloud Run permission to use this service account:
 
 ```bash
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="serviceAccount:playwright-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+gcloud projects add-iam-policy-binding project-517cd71a-7c2f-4e1b-af2 \
+  --member="serviceAccount:playwright-runner@project-517cd71a-7c2f-4e1b-af2.iam.gserviceaccount.com" \
   --role="roles/run.invoker"
 ```
 
@@ -160,13 +160,13 @@ Grant Cloud Build permission to deploy Cloud Run Jobs (needed if using Cloud Bui
 
 ```bash
 # Get your project number
-PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
+PROJECT_NUMBER=$(gcloud projects describe project-517cd71a-7c2f-4e1b-af2 --format='value(projectNumber)')
 
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding project-517cd71a-7c2f-4e1b-af2 \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/run.admin"
 
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+gcloud projects add-iam-policy-binding project-517cd71a-7c2f-4e1b-af2 \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 ```
@@ -175,7 +175,7 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 
 ## 5. Build and Push the Docker Image
 
-The `Dockerfile` uses the official Playwright image (`mcr.microsoft.com/playwright:v1.59.1-noble`) as the base — Chromium is pre-installed, so no browser download happens at build time.
+The `Dockerfile` uses the official Playwright image (`mcr.microsoft.com/playwright:v1.61.0-noble`) as the base — Chromium is pre-installed, so no browser download happens at build time.
 
 ### Option A — Build via Cloud Build (recommended)
 
@@ -184,22 +184,22 @@ This builds the image remotely on GCP — no Docker required locally.
 ```bash
 gcloud builds submit \
   --config=cloudbuild.yaml \
-  --substitutions="_REGION=us-central1,_REPO=adobe-automation,_IMAGE=playwright-adobe" \
-  --project=YOUR_PROJECT_ID
+  --substitutions="_REGION=asia-south1,_REPO=adobe-automation,_IMAGE=playwright-adobe" \
+  --project=project-517cd71a-7c2f-4e1b-af2
 ```
 
 After completion the image is available at:
 ```
-us-central1-docker.pkg.dev/YOUR_PROJECT_ID/adobe-automation/playwright-adobe:latest
+asia-south1-docker.pkg.dev/project-517cd71a-7c2f-4e1b-af2/adobe-automation/playwright-adobe:latest
 ```
 
 ### Option B — Build locally and push
 
 ```bash
 # Authenticate Docker to push to Artifact Registry
-gcloud auth configure-docker us-central1-docker.pkg.dev
+gcloud auth configure-docker asia-south1-docker.pkg.dev
 
-IMAGE="us-central1-docker.pkg.dev/YOUR_PROJECT_ID/adobe-automation/playwright-adobe:latest"
+IMAGE="asia-south1-docker.pkg.dev/YOUR_PROJECT_ID/adobe-automation/playwright-adobe:latest"
 
 docker build --platform linux/amd64 -t "$IMAGE" .
 docker push "$IMAGE"
@@ -229,9 +229,9 @@ For 20,577 accounts, the file can be large — Cloud Run will slice it per task,
 Edit the top of `scripts/dispatch-job.sh` or set the variables as shell exports before calling the script:
 
 ```bash
-export GCP_PROJECT_ID="YOUR_PROJECT_ID"
-export GCS_BUCKET="YOUR_BUCKET_NAME"
-export SERVICE_ACCOUNT="playwright-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+export GCP_PROJECT_ID="project-517cd71a-7c2f-4e1b-af2"
+export GCS_BUCKET="accounts-auto"
+export SERVICE_ACCOUNT="playwright-runner@project-517cd71a-7c2f-4e1b-af2.iam.gserviceaccount.com"
 
 # Optional tuning (defaults shown)
 export BATCH_SIZE=50          # accounts per task (50 → 412 tasks for 20,577 accounts)
@@ -362,7 +362,7 @@ echo "Merged $(wc -l < merged_results.csv) rows into merged_results.csv"
 ```bash
 # Watch live task status
 gcloud run jobs executions describe JOB_EXECUTION_NAME \
-  --region=us-central1 \
+  --region=asia-south1 \
   --project=YOUR_PROJECT_ID
 
 # Or open the Cloud Console:
@@ -406,9 +406,9 @@ gcloud services enable run.googleapis.com cloudbuild.googleapis.com \
   artifactregistry.googleapis.com storage.googleapis.com iam.googleapis.com
 
 gcloud artifacts repositories create adobe-automation \
-  --repository-format=docker --location=us-central1
+  --repository-format=docker --location=asia-south1
 
-gcloud storage buckets create gs://YOUR_BUCKET --location=us-central1
+gcloud storage buckets create gs://YOUR_BUCKET --location=asia-south1
 
 gcloud iam service-accounts create playwright-runner --project=YOUR_PROJECT_ID
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \

@@ -23,15 +23,11 @@ type AdobeTestBody = (
 ) => Promise<void> | void;
 
 export function defineAdobeAccountTests(title: AdobeTitle, body: AdobeTestBody): void {
-  const { accounts, shard, skipReason } = loadFreshAdobeAccounts();
+  const { accounts, skipReason } = loadFreshAdobeAccounts();
 
   if (accounts.length === 0) {
     test.skip(skipReason ?? ADOBE_NO_FRESH_ACCOUNTS_REASON, async () => {});
     return;
-  }
-
-  if (shard) {
-    console.log(`Adobe account shard ${shard.index + 1}/${shard.total}: ${accounts.length} account(s) assigned.`);
   }
 
   for (const assignedAccount of accounts) {
