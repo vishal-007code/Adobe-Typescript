@@ -149,7 +149,9 @@ if ! gcloud iam service-accounts describe "${RUNTIME_SERVICE_ACCOUNT}" \
   log "Creating service account: ${RUNTIME_SERVICE_ACCOUNT}"
   gcloud iam service-accounts create playwright-runner \
     --project="${PROJECT_ID}" \
-    --display-name="Playwright Cloud Run Job Runner"
+    --display-name="Playwright Cloud Run Job Runner" || \
+  gcloud iam service-accounts describe "${RUNTIME_SERVICE_ACCOUNT}" \
+    --project="${PROJECT_ID}" >/dev/null 2>&1
 else
   log "Runtime service account already exists."
 fi
@@ -164,7 +166,10 @@ if ! gcloud artifacts repositories describe "${REPOSITORY}" \
     --repository-format=docker \
     --location="${REGION}" \
     --description="Docker images for Playwright jobs" \
-    --project="${PROJECT_ID}"
+    --project="${PROJECT_ID}" || \
+  gcloud artifacts repositories describe "${REPOSITORY}" \
+    --location="${REGION}" \
+    --project="${PROJECT_ID}" >/dev/null 2>&1
 else
   log "Artifact Registry repository already exists."
 fi
@@ -177,7 +182,9 @@ if ! gcloud storage buckets describe "gs://${ACCOUNTS_BUCKET}" \
   gcloud storage buckets create "gs://${ACCOUNTS_BUCKET}" \
     --location="${REGION}" \
     --uniform-bucket-level-access \
-    --project="${PROJECT_ID}"
+    --project="${PROJECT_ID}" || \
+  gcloud storage buckets describe "gs://${ACCOUNTS_BUCKET}" \
+    --project="${PROJECT_ID}" >/dev/null 2>&1
 else
   log "Bucket already exists."
 fi
@@ -187,22 +194,38 @@ CURRENT_STAGE="upload-accounts"
 gcloud storage cp "${ACCOUNTS_CSV}" "${ACCOUNTS_URI}" \
   --project="${PROJECT_ID}"
 
+retry_iam_binding() {
+  local cmd=("$@")
+  local max_attempts=5
+  for attempt in $(seq 1 "$max_attempts"); do
+    if "${cmd[@]}" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ "$attempt" -lt "$max_attempts" ]]; then
+      log "IAM binding attempt $attempt failed (etag conflict likely), retrying in 5s..."
+      sleep 5
+    fi
+  done
+  log "IAM binding failed after $max_attempts attempts."
+  return 1
+}
+
 if [[ "${SKIP_IAM_BINDINGS:-0}" == "1" ]]; then
   log "Skipping bucket IAM bindings because SKIP_IAM_BINDINGS=1"
 else
   log "Granting runtime service account bucket read access..."
   CURRENT_STAGE="grant-bucket-read"
-  gcloud storage buckets add-iam-policy-binding "gs://${ACCOUNTS_BUCKET}" \
+  retry_iam_binding gcloud storage buckets add-iam-policy-binding "gs://${ACCOUNTS_BUCKET}" \
     --member="serviceAccount:${RUNTIME_SERVICE_ACCOUNT}" \
     --role="roles/storage.objectViewer" \
-    --project="${PROJECT_ID}" >/dev/null
+    --project="${PROJECT_ID}"
 
   log "Granting runtime service account report write access..."
   CURRENT_STAGE="grant-bucket-write"
-  gcloud storage buckets add-iam-policy-binding "gs://${REPORTS_BUCKET}" \
+  retry_iam_binding gcloud storage buckets add-iam-policy-binding "gs://${REPORTS_BUCKET}" \
     --member="serviceAccount:${RUNTIME_SERVICE_ACCOUNT}" \
     --role="roles/storage.objectCreator" \
-    --project="${PROJECT_ID}" >/dev/null
+    --project="${PROJECT_ID}"
 fi
 
 log "Granting runtime service account logging permission..."
@@ -233,7 +256,7 @@ gcloud run jobs deploy "${JOB_NAME}" \
   --region="${REGION}" \
   --project="${PROJECT_ID}" \
   --service-account="${RUNTIME_SERVICE_ACCOUNT}" \
-  --tasks="${TASKS}" \
+  --tasks="${TASKS}" \g
   --parallelism="${PARALLELISM}" \
   --max-retries=1 \
   --task-timeout="${TASK_TIMEOUT}" \
