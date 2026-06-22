@@ -6,11 +6,15 @@
   "scripts": {
     "build": "tsc",
     "test:adobe": "playwright test --project=adobe-chromium",
+    "test:adobe:fast": "playwright test --project=adobe-chromium --workers=6",
+    "test:adobe:faster": "playwright test --project=adobe-chromium --workers=8",
     "test:adobe:low-network": "node ./scripts/run-adobe-low-network.mjs",
+    "test:adobe:low-network:fast": "node ./scripts/run-adobe-low-network.mjs --workers=6",
+    "test:adobe:low-network:faster": "node ./scripts/run-adobe-low-network.mjs --workers=8",
     "test:infra": "playwright test --project=internal-chromium"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@playwright/test": "^1.60.0",
     "@types/node": "^25.6.0",
     "typescript": "^5.5.3"
   },

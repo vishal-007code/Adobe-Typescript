@@ -7,7 +7,7 @@ export class GmailProvider {
     readonly welcome_screen : Locator;
     readonly i_understand_button : Locator;
     readonly confirm_signIn_msg : Locator;
-    readonly confirm_sign_in_button  : Locator;
+    readonly confirm_sign_in_button  : Locator;
 
     constructor(page: Page) {
         this.page = page;
@@ -16,18 +16,18 @@ export class GmailProvider {
         this.welcome_screen = page.getByText('Welcome to your new account');
         this.i_understand_button = page.getByRole('button', { name: /I understand/i });
         this.confirm_signIn_msg = page.getByText('Sign in to Adobe');
-        this.confirm_sign_in_button = page.getByRole('button', { name: /^Continue$/i });
+        this.confirm_sign_in_button = page.getByText('Continue');
     }
 
     async g_email_field( email : string ): Promise<void> {
         await this.email_field.fill(email);
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(this.keypressDelayMs);
         await this.email_field.press("Enter");
     }
 
     async g_password_field( password : string ): Promise<void> {
         await this.password_field.fill(password);
-        await this.page.waitForTimeout(1000);
+        await this.page.waitForTimeout(this.keypressDelayMs);
         await this.password_field.press("Enter");
     }
 
@@ -53,11 +53,21 @@ export class GmailProvider {
         await this.g_email_field( email );
         await this.g_password_field( password);
 
-        await this.click_g_iUnderstand();
-        await this.click_confirm_sign_in_button();
+        try {
+            await this.welcome_screen.waitFor({ state: 'visible',timeout: 3000});
+        } catch (e) {}
+        if (await this.welcome_screen.isVisible()) {
+            await this.click_g_iUnderstand();
+        }
+
+        try {
+            await this.confirm_signIn_msg.waitFor({state: 'visible',timeout: 3000});
+        } catch (e) {}
+        if (await this.confirm_sign_in_button.isVisible()) {
+            await this.click_confirm_sign_in_button();
+        }
 
     }
-
 
 
 }

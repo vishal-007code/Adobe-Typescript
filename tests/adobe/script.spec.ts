@@ -20,7 +20,7 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   stepTracker.setStep('Enter email at Adobe Login');
   await adobe.fill_adb_email_field(account.email);
 
-  stepTracker.setStep('Handle Personal/Company screen on Adobe Login');
+  stepTracker.setStep('Handle Persoanl/Company screen on Adobe Login');
   await adobe.select_cmp_option();
 
   stepTracker.setStep('check email provider');
@@ -39,28 +39,17 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   stepTracker.setStep('Activate by Lets Go');
   await adobe.skipLetsGoViaAPI(account.email);
 
-  stepTracker.setStep('Setup Canvas');
-  await adobe.createTemplate();
+  stepTracker.setStep('Redirect to edit');
+  await adobe.shortcut();
+  
+  stepTracker.setStep('Wait for Img Generation');
+  await adobe.wait_for_generation();
+
+  stepTracker.setStep('Open In Editor');
+  await editor.clickOpenInEditor();
 
   stepTracker.setStep('Skip Tutorial dialog if visible');
   await editor.skipTutorial();
-
-  stepTracker.setStep('Search Template');
-  const keyword: string = adobe.getRandomSearchKeyword()
-  await adobe.searchForTemplate(keyword);
-
-  stepTracker.setStep('Select Template');
-  await adobe.selectTemplate(keyword);
-
-  // stepTracker.setStep('Redirect to edit');
-  // await adobe.shortcut();
-  
-  // stepTracker.setStep('Wait for Img Generation');
-  // await adobe.wait_for_generation();
-
-  // stepTracker.setStep('Open In Editor');
-  // await editor.clickOpenInEditor();
-
 
   stepTracker.setStep('Click Share button');
   await editor.clickShare();
@@ -84,7 +73,7 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
 
   
 //   stepTracker.setStep('Download');
-//   const filePath = await adobe.download_img(testInfo.workerIndex);
+//   const filePath = await adobe.download_img();
   
 //   // 3. Optional: Assertion to verify the download happened
 //   console.log(`File saved to: ${filePath}`);

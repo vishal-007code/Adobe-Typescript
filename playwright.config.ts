@@ -5,6 +5,13 @@ import { createAdobeRunId } from './src/adobe/runtime';
 const adobeRunId = process.env.ADOBE_RUN_ID?.trim() || createAdobeRunId();
 const adobeLowNetworkDebugEnabled = process.env.ADOBE_LOW_NETWORK_DEBUG?.trim() === '1';
 const adobeDebugSpecPattern = /tests[\\/]adobe[\\/].+\.low-network\.debug\.spec\.ts$/;
+const configuredWorkers = resolveWorkerCount(process.env.ADOBE_PLAYWRIGHT_WORKERS);
+const sslBypassEnabled = resolveBooleanEnv(process.env.ADOBE_SSL_BYPASS, true);
+const debugArtifactsEnabled = resolveBooleanEnv(process.env.ADOBE_DEBUG_ARTIFACTS, false);
+const videoMode = resolveVideoMode(
+  process.env.ADOBE_VIDEO_MODE,
+  debugArtifactsEnabled ? 'on' : 'retain-on-failure',
+);
 process.env.ADOBE_RUN_ID = adobeRunId;
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -54,7 +61,7 @@ export default defineConfig({
     [path.resolve(__dirname, 'src/adobe/reporter.ts')],
   ],
   timeout: 360_000,
-  expect:{
+  expect: {
     timeout: 120_000,
   },
   use: {
@@ -84,3 +91,49 @@ export default defineConfig({
     },
   ],
 });
+
+function resolveWorkerCount(rawValue: string | undefined): number | undefined {
+  const value = rawValue?.trim();
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`ADOBE_PLAYWRIGHT_WORKERS must be a positive integer. Got "${rawValue}".`);
+  }
+  return parsed;
+}
+
+function resolveBooleanEnv(rawValue: string | undefined, fallback: boolean): boolean {
+  const value = rawValue?.trim().toLowerCase();
+  if (!value) {
+    return fallback;
+  }
+
+  if (value === '1' || value === 'true' || value === 'yes') {
+    return true;
+  }
+
+  if (value === '0' || value === 'false' || value === 'no') {
+    return false;
+  }
+
+  return fallback;
+}
+
+function resolveVideoMode(
+  rawValue: string | undefined,
+  fallback: 'off' | 'on' | 'retain-on-failure' | 'on-first-retry',
+): 'off' | 'on' | 'retain-on-failure' | 'on-first-retry' {
+  const value = rawValue?.trim().toLowerCase();
+  if (!value) {
+    return fallback;
+  }
+
+  if (value === 'off' || value === 'on' || value === 'retain-on-failure' || value === 'on-first-retry') {
+    return value;
+  }
+
+  return fallback;
+}

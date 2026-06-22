@@ -3,6 +3,12 @@ export type AdobeAccount = {
   password: string;
 };
 
+export type AdobeAccountShard = {
+  index: number;
+  total: number;
+  source: 'cloud-run' | 'env';
+};
+
 export type AdobeAccountSource =
   | {
       kind: 'csv';
@@ -17,6 +23,7 @@ export type AdobeAccountSource =
 export type FreshAdobeAccountsResult = {
   accounts: AdobeAccount[];
   source: AdobeAccountSource;
+  shard?: AdobeAccountShard;
   skipReason?: string;
 };
 

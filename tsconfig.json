@@ -8,5 +8,18 @@
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "playwright.config.ts"]
+
+  "include": [
+    "src/**/*.ts",
+    "tests/adobe/script.spec.ts",
+    "playwright.config.ts"
+  ],
+
+  "exclude": [
+    "node_modules",
+    "test-results",
+    "playwright-report",
+    "tests/adobe/script.low-network.debug.spec.ts",
+    "tests/internal/**/*.ts"
+  ]
 }
