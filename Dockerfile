@@ -1,15 +1,24 @@
-FROM mcr.microsoft.com/playwright:v1.60.0-noble
+FROM mcr.microsoft.com/playwright:v1.59.1-noble
+
+# Install Google Cloud CLI for GCS access
+RUN apt-get update && apt-get install -y \
+    curl \
+    gnupg \
+    apt-transport-https \
+    ca-certificates \
+  && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | \
+     gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+  && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+     > /etc/apt/sources.list.d/google-cloud-sdk.list \
+  && apt-get update && apt-get install -y google-cloud-cli \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-ENV CI=1 \
-    PLAYWRIGHT_HTML_OPEN=never \
-    ADOBE_PLAYWRIGHT_WORKERS=1
-
-COPY package*.json ./
-RUN npm ci
+# Install Node deps without re-downloading Playwright browsers (already in base image)
+COPY package.json ./
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
 
 COPY . .
-RUN npm run build
 
-CMD ["sh", "-lc", "echo '[SERVER] Starting Adobe Playwright Cloud Run job'; echo '[SERVER] Node version:' $(node --version); echo '[SERVER] NPM version:' $(npm --version); echo '[SERVER] Working directory:' $(pwd); echo '[SERVER] ADOBE_ACCOUNTS_CSV='${ADOBE_ACCOUNTS_CSV:-unset}; echo '[SERVER] ADOBE_ACCOUNTS_GCS_URI='${ADOBE_ACCOUNTS_GCS_URI:-unset}; echo '[SERVER] ADOBE_REPORTS_GCS_URI='${ADOBE_REPORTS_GCS_URI:-unset}; echo '[SERVER] ADOBE_PLAYWRIGHT_WORKERS='${ADOBE_PLAYWRIGHT_WORKERS:-1}; echo '[SERVER] ADOBE_STOP_AFTER_LOGIN='${ADOBE_STOP_AFTER_LOGIN:-0}; echo '[SERVER] ADOBE_SCRIPT_ACCOUNT_LIMIT='${ADOBE_SCRIPT_ACCOUNT_LIMIT:-unset}; echo '[SERVER] Fetching accounts from GCS'; node scripts/fetch-gcs-accounts.mjs; echo '[SERVER] Accounts fetch completed'; echo '[SERVER] Running only tests/adobe/script.spec.ts'; npx playwright test tests/adobe/script.spec.ts --project=adobe-chromium --workers=${ADOBE_PLAYWRIGHT_WORKERS:-1}; TEST_EXIT_CODE=$?; echo '[SERVER] Playwright exited with code:' ${TEST_EXIT_CODE}; echo '[SERVER] Listing local artifacts before upload'; find test-results playwright-report reports -maxdepth 5 -type f 2>/dev/null || true; echo '[SERVER] Uploading reports and Playwright artifacts'; node scripts/upload-adobe-reports.mjs || true; echo '[SERVER] Done'; exit ${TEST_EXIT_CODE}"]
+ENTRYPOINT ["bash", "scripts/run-cloud-batch.sh"]

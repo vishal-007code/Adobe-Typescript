@@ -24,7 +24,7 @@ export class MsProvider {
     }
 
     async ms_password_field( password : string ): Promise<void> {
-        await this.password_field.waitFor({state:'visible',timeout:2000})
+        await this.password_field.waitFor({ state: 'visible', timeout: 15000 })
         await this.password_field.fill(password);
         await this.page.waitForTimeout(500);
         await this.password_field.press("Enter");

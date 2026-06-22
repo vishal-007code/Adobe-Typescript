@@ -1,7 +1,6 @@
 import type { BrowserContextOptions, Page, TestInfo } from '@playwright/test';
 import { expect, test as base } from '@playwright/test';
-import { appendConsumedFragment } from './report-files';
-import { ADOBE_ACCOUNT_ATTACHMENT, ADOBE_STEP_ATTACHMENT, requireAdobeRunId } from './runtime';
+import { ADOBE_ACCOUNT_ATTACHMENT, ADOBE_STEP_ATTACHMENT } from './runtime';
 import type { AdobeAccount, StepTracker } from './types';
 
 type AdobeTestOptions = {
@@ -83,19 +82,7 @@ export const test = base.extend<AdobeFixtures & AdobeTestOptions>({
 
   context: async ({ assignedAccount, browser }, use, testInfo) => {
     assertAssignedAccount(assignedAccount, testInfo.title);
-
-    appendConsumedFragment(
-      {
-        email: assignedAccount.email,
-        consumed_at: new Date().toISOString(),
-      },
-      {
-        runId: requireAdobeRunId(),
-        workerIndex: testInfo.workerIndex,
-      },
-    );
-
-    const context = await browser.newContext(buildContextOptions(testInfo.project.use, testInfo.outputDir));
+    const context = await browser.newContext(buildContextOptions(testInfo.project.use));
     try {
       await use(context);
     } finally {

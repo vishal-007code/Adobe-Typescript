@@ -1,92 +1,74 @@
-import type { FullResult, Reporter, TestCase, TestError, TestResult } from '@playwright/test/reporter';
-import fs from 'node:fs';
-import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { appendResultFragment, mergeAdobeRunArtifacts } from './report-files';
-import { ADOBE_ACCOUNT_ATTACHMENT, ADOBE_STEP_ATTACHMENT, requireAdobeRunId } from './runtime';
+import type { FullResult, Reporter, TestCase, TestResult } from '@playwright/test/reporter';
+import { appendCsvRow } from './csv';
+import { loadConsumedLedgerRows, normalizeAdobeEmail } from './accounts';
+import {
+  ADOBE_ACCOUNT_ATTACHMENT,
+  ADOBE_CONSUMED_HEADERS,
+  ADOBE_LINK_ATTACHMENT,
+  ADOBE_RESULTS_HEADERS,
+  ADOBE_STEP_ATTACHMENT,
+  getAdobeConsumedLedgerPath,
+  getAdobeResultsPathForRun,
+  requireAdobeRunId,
+} from './runtime';
 import type { AdobeResultStatus } from './types';
 
 export default class AdobeCsvReporter implements Reporter {
-  private readonly runId = requireAdobeRunId();
-  private sawAdobeSuiteTest = false;
+  private readonly resultsPath: string;
+  private readonly consumedLedgerPath: string;
+  private readonly seenEmails = new Set<string>();
+
+  constructor() {
+    const runId = requireAdobeRunId();
+    this.resultsPath = getAdobeResultsPathForRun(runId);
+    this.consumedLedgerPath = getAdobeConsumedLedgerPath();
+
+    // Pre-load already-consumed emails so we never write duplicates to the ledger.
+    for (const row of loadConsumedLedgerRows(this.consumedLedgerPath)) {
+      const normalized = normalizeAdobeEmail(row.email);
+      if (normalized) this.seenEmails.add(normalized);
+    }
+  }
 
   printsToStdio(): boolean {
     return false;
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
-    if (!isAdobeProjectTest(test)) {
-      return;
-    }
+    if (!isAdobeProjectTest(test)) return;
 
-    this.sawAdobeSuiteTest = true;
     const accountMetadata = readJsonAttachment<{ email?: string }>(result, ADOBE_ACCOUNT_ATTACHMENT);
     const stepMetadata = readJsonAttachment<{ lastStep?: string }>(result, ADOBE_STEP_ATTACHMENT);
+    const linkMetadata = readJsonAttachment<{ publishedLink?: string }>(result, ADOBE_LINK_ATTACHMENT);
     const mappedStatus = mapStatus(result.status);
+    const email = accountMetadata?.email?.trim().toLowerCase() ?? '';
 
-    appendResultFragment(
-      {
-        timestamp: result.startTime.toISOString(),
-        email: accountMetadata?.email?.trim().toLowerCase() ?? '',
-        test_status: mappedStatus,
-        failed_at_step: mappedStatus === 'failed' ? stepMetadata?.lastStep?.trim() ?? '' : '',
-        failure_reason: getFailureReason(test, result, mappedStatus),
-        duration_ms: String(result.duration),
-      },
-      {
-        runId: this.runId,
-        workerIndex: result.workerIndex >= 0 ? result.workerIndex : result.parallelIndex,
-      },
-    );
+    // Write result row immediately — visible in the CSV as each test finishes.
+    appendCsvRow(this.resultsPath, ADOBE_RESULTS_HEADERS, [
+      result.startTime.toISOString(),
+      email,
+      mappedStatus,
+      mappedStatus === 'failed' ? stepMetadata?.lastStep?.trim() ?? '' : '',
+      getFailureReason(test, result, mappedStatus),
+      String(result.duration),
+      linkMetadata?.publishedLink?.trim() ?? '',
+    ]);
+
+    // Mark account consumed once, regardless of pass/fail.
+    if (email) {
+      const normalized = normalizeAdobeEmail(email);
+      if (normalized && !this.seenEmails.has(normalized)) {
+        this.seenEmails.add(normalized);
+        appendCsvRow(this.consumedLedgerPath, ADOBE_CONSUMED_HEADERS, [
+          normalized,
+          result.startTime.toISOString(),
+        ]);
+      }
+    }
   }
 
-  async onEnd(result: FullResult): Promise<void> {
-    if (!this.sawAdobeSuiteTest) {
-      return;
-    }
-
-    const mergedArtifacts = mergeAdobeRunArtifacts({
-      finishedAt: new Date(),
-      runId: this.runId,
-    });
-
-    const summaryPath = path.join(path.dirname(mergedArtifacts.resultsPath), `adobe_report_summary_${this.runId}.json`);
-    fs.writeFileSync(
-      summaryPath,
-      JSON.stringify(
-        {
-          runId: this.runId,
-          resultCount: mergedArtifacts.resultCount,
-          consumedCount: mergedArtifacts.consumedCount,
-          finishedAt: new Date().toISOString(),
-        },
-        null,
-        2,
-      ),
-      'utf8',
-    );
-
-    const uploadResult = spawnSync(
-      process.execPath,
-      [path.resolve(process.cwd(), 'scripts/upload-adobe-reports.mjs')],
-      {
-        env: {
-          ...process.env,
-          ADOBE_RESULTS_PATH: mergedArtifacts.resultsPath,
-          ADOBE_CONSUMED_LEDGER_PATH: mergedArtifacts.consumedLedgerPath,
-          ADOBE_REPORT_SUMMARY_PATH: summaryPath,
-        },
-        stdio: 'inherit',
-      },
-    );
-
-    if (uploadResult.status !== 0) {
-      throw new Error(`Failed to upload Adobe report artifacts. Exit code: ${uploadResult.status ?? 'unknown'}.`);
-    }
-
-    if (result.status === 'timedout') {
-      return;
-    }
+  onEnd(_result: FullResult): void {
+    // All rows were written in real-time in onTestEnd — nothing to merge.
   }
 }
 
@@ -95,12 +77,8 @@ function isAdobeProjectTest(test: TestCase): boolean {
 }
 
 function mapStatus(status: TestResult['status']): AdobeResultStatus {
-  if (status === 'passed') {
-    return 'passed';
-  }
-  if (status === 'skipped') {
-    return 'skipped';
-  }
+  if (status === 'passed') return 'passed';
+  if (status === 'skipped') return 'skipped';
   return 'failed';
 }
 
@@ -108,46 +86,26 @@ function readJsonAttachment<T>(result: TestResult, name: string): T | undefined 
   const attachment = result.attachments.find(
     (candidate) => candidate.name === name && candidate.contentType === 'application/json',
   );
-
-  if (!attachment) {
-    return undefined;
-  }
-
-  const body = attachment.body;
-  if (!body) {
-    return undefined;
-  }
-
-  return JSON.parse(body.toString('utf8')) as T;
+  if (!attachment?.body) return undefined;
+  return JSON.parse(attachment.body.toString('utf8')) as T;
 }
 
 function getFailureReason(test: TestCase, result: TestResult, mappedStatus: AdobeResultStatus): string {
-  if (mappedStatus === 'passed') {
-    return '';
-  }
+  if (mappedStatus === 'passed') return '';
 
   if (mappedStatus === 'skipped') {
-    const skipAnnotation = result.annotations.find((annotation) => annotation.type === 'skip');
-    return skipAnnotation?.description ?? test.annotations.find((annotation) => annotation.type === 'skip')?.description ?? '';
+    const skipAnnotation = result.annotations.find((a) => a.type === 'skip');
+    return skipAnnotation?.description ?? test.annotations.find((a) => a.type === 'skip')?.description ?? '';
   }
 
   return formatError(result.error ?? result.errors[0]);
 }
 
-function formatError(error: TestError | undefined): string {
-  if (!error) {
-    return '';
-  }
-
+function formatError(error: { message?: string; value?: string } | undefined): string {
+  if (!error) return '';
   const message = error.message?.trim();
-  if (message) {
-    return message.replace(/\s+/g, ' ');
-  }
-
+  if (message) return message.replace(/\s+/g, ' ');
   const value = error.value?.trim();
-  if (value) {
-    return value.replace(/\s+/g, ' ');
-  }
-
+  if (value) return value.replace(/\s+/g, ' ');
   return '';
 }

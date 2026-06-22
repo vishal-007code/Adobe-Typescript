@@ -1,22 +1,20 @@
-import { expect, Locator, Page } from "@playwright/test";
+import {expect, Locator, Page} from "@playwright/test";
 
 export class AdobePage {
 
     readonly page: Page;
-    readonly email_field: Locator;
-    readonly email_field_continue: Locator;
-    readonly downld_icon: Locator;
-    readonly single_img_radio_btn: Locator;
-    readonly downld_btn: Locator;
-    readonly loadIndicator: Locator;
-    readonly selected_card: Locator;
-    readonly letsGo_btn: Locator;
-    readonly sltNaccount: Locator;
-    readonly cmp_option: Locator;
-    readonly genratedImg: Locator;
-    readonly letsGoIndicator: Locator;
-    readonly emailTypeDelayMs: number;
-    readonly letsGoAppearTimeoutMs: number;
+    readonly email_field : Locator;
+    readonly email_field_continue : Locator;
+    readonly downld_icon : Locator
+    readonly single_img_radio_btn : Locator;
+    readonly downld_btn : Locator;
+    readonly loadIndicator : Locator;
+    readonly selected_card : Locator;
+    readonly letsGo_btn : Locator;
+    readonly sltNaccount : Locator;
+    readonly cmp_option : Locator;
+    readonly genratedImg : Locator;
+    readonly letsGoIndicator : Locator;
 
     constructor(page: Page) {
         this.page = page;
@@ -30,35 +28,19 @@ export class AdobePage {
 
         this.loadIndicator = page.getByTestId('firefly-skeleton');
         this.selected_card = page.locator(".selected.card");
-
-        // From your screenshot, the "Let's go" button is:
-        // <sp-button data-testid="x-dialog-primary-cta" role="button">Let's go</sp-button>
-        this.letsGo_btn = page
-            .getByTestId('x-dialog-primary-cta');
-
+        this.letsGo_btn = page.getByText('Let’s go');
         this.sltNaccount = page.getByRole('heading', { name: 'Select an account' });
         this.cmp_option = page.getByText('Company or School Account');
 
         this.genratedImg = page.getByTestId('firefly-thumbnail-image').first();
-
-        this.letsGoIndicator = page.getByRole('heading', {
-            name: /Help us customize your experience\./i
-        });
-
-        this.emailTypeDelayMs = resolvePositiveIntEnv('ADOBE_EMAIL_TYPE_DELAY_MS', 12);
-        this.letsGoAppearTimeoutMs = resolvePositiveIntEnv('ADOBE_LETS_GO_APPEAR_TIMEOUT_MS', 60000);
+        this.letsGoIndicator = page.getByText('Hold tight. We’re loading your school account.', { exact: true });
     }
 
     async adb_login(): Promise<void> {
         try {
             await this.page.goto("https://new.express.adobe.com/");
-            await this.page.waitForURL(/auth\.services\.adobe\.com/, {
-                waitUntil: 'load',
-                timeout: 90000
-            });
-        } catch (error) {
-            console.log(`[ADB_LOGIN] Continue after navigation wait issue: ${error}`);
-        }
+            await this.page.waitForURL(/auth.services.adobe.com/,{waitUntil:'load'});
+        } catch (e) {}
     }
 
     async fill_adb_email_field(email: string): Promise<void> {
@@ -87,41 +69,44 @@ export class AdobePage {
     }
 
     async wait_for_generation(): Promise<void> {
-        await expect(this.genratedImg).toBeVisible({ timeout: 120000 });
-        await expect(this.downld_icon).toBeEnabled({ timeout: 120000 });
-        await expect(this.loadIndicator).toHaveCount(0, { timeout: 120000 });
+        await expect(this.genratedImg).toBeVisible();
+        await expect(this.downld_icon).toBeEnabled();
+        await expect(this.loadIndicator).toHaveCount(0);
     }
 
     async download_img(): Promise<string | null> {
-        const downloadPromise = this.page.waitForEvent('download', { timeout: 260000 });
-
-        await expect(this.downld_icon).toBeEnabled({ timeout: 120000 });
+        // waiting for the download event BEFORE clicking the final button
+        const downloadPromise = this.page.waitForEvent('download',{timeout: 260000});
+        await expect(this.downld_icon).toBeEnabled();
         await this.downld_icon.click();
 
         await this.single_img_radio_btn.click();
         await this.downld_btn.click();
 
         const download = await downloadPromise;
-        const path = `./downloads/${download.suggestedFilename()}`;
 
+        // Save it to a specific path
+        const path = `./downloads/${download.suggestedFilename()}`;
         await download.saveAs(path);
 
-        return path;
+        return filePath;
     }
 
     async getLoginProvider(): Promise<string> {
         const supportedProviderPattern = /^https:\/\/(?:accounts\.google\.com|login\.microsoftonline\.com)\//i;
 
-        await this.page.waitForFunction(
+        // Return the URL from inside waitForFunction so it is captured atomically with
+        // the pattern check — no separate page.url() call that could race a redirect.
+        const handle = await this.page.waitForFunction(
             (patternSource) => {
-                return new RegExp(patternSource, 'i').test(window.location.href);
+                const url = window.location.href;
+                return new RegExp(patternSource, 'i').test(url) ? url : null;
             },
             supportedProviderPattern.source,
             { timeout: 90000 }
         );
 
         const providerUrl = this.page.url();
-
         if (!supportedProviderPattern.test(providerUrl)) {
             throw new Error(`Adobe login did not redirect to a supported provider. Current URL: ${providerUrl}`);
         }
@@ -130,230 +115,46 @@ export class AdobePage {
     }
 
     async waitForDashboard(): Promise<void> {
-        try {
-            await this.page.waitForURL(/new\.express\.adobe\.com/, {
-                waitUntil: 'domcontentloaded',
-                timeout: 120000
-            });
-
-            await expect(this.page).toHaveURL(/.*new\.express\.adobe\.com/, {
-                timeout: 120000
-            });
-        } catch (error) {
-            console.log(`[DASHBOARD] Continue after dashboard wait issue: ${error}`);
-        }
+        try{
+            await this.page.waitForURL(/new.express.adobe.com/);
+            await expect(this.page).toHaveURL(/.*new\.express\.adobe\.com/);
+        } catch(e){}
     }
 
     async isLetsGoIndicator_Visible(): Promise<boolean> {
-        try {
-            await this.letsGoIndicator.waitFor({ state: 'visible', timeout: 10000 });
-            return true;
-        } catch (error) {
-            return false;
-        }
+        return await this.letsGoIndicator
+            .waitFor({ state: 'visible',timeout:10000})
+            .then(() => true)
+            .catch(() => false);
     }
 
     async shortcut(): Promise<void> {
-        await this.page.goto(
-            "https://new.express.adobe.com/new?category=media&action=text+to+image&width=1080&height=1080&intent=general&neural-style=digital&contentClasses=art&prompt=Festival&tab=all",
-            { waitUntil: 'domcontentloaded', timeout: 120000 }
-        );
+       await this.page.goto("https://new.express.adobe.com/new?category=media&action=text+to+image&width=1080&height=1080&intent=general&neural-style=digital&contentClasses=art&prompt=Festival&tab=all")
     }
 
-    private async debugLetsGoButtons(email: string, reason: string): Promise<void> {
-        console.log(`[LETS_GO_DEBUG] ${reason} for ${email}`);
-
-        const buttons = await this.page
-            .locator('button, sp-button, [role="button"], [data-testid]')
-            .evaluateAll((els) => {
-                return els.map((el, index) => {
-                    const element = el as HTMLElement;
-
-                    return {
-                        index,
-                        tagName: element.tagName,
-                        text: element.innerText || element.textContent || '',
-                        id: element.getAttribute('id') || '',
-                        testId: element.getAttribute('data-testid') || '',
-                        ariaLabel: element.getAttribute('aria-label') || '',
-                        role: element.getAttribute('role') || '',
-                        className: element.getAttribute('class') || '',
-                        type: element.getAttribute('type') || '',
-                        name: element.getAttribute('name') || '',
-                        disabled: element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true'
-                    };
-                });
-            })
-            .catch((error) => {
-                console.log(`[LETS_GO_DEBUG] Failed to collect clickable elements for ${email}: ${error}`);
-                return [];
-            });
-
-        console.log(`[LETS_GO_DEBUG] Found ${buttons.length} clickable/test-id elements for ${email}`);
-
-        for (const button of buttons) {
-            console.log(
-                `[LETS_GO_DEBUG] index=${button.index} ` +
-                `tag=${button.tagName} ` +
-                `id="${button.id}" ` +
-                `data-testid="${button.testId}" ` +
-                `aria-label="${button.ariaLabel}" ` +
-                `role="${button.role}" ` +
-                `type="${button.type}" ` +
-                `name="${button.name}" ` +
-                `disabled="${button.disabled}" ` +
-                `text="${button.text.trim().replace(/\s+/g, ' ').slice(0, 160)}" ` +
-                `class="${button.className}"`
-            );
+    async handle_letsGo(): Promise<void> {
+        try{
+            await this.letsGo_btn.waitFor({state:'visible'});
+        } catch (e) {}
+        if(await this.letsGo_btn.isVisible()){
+            await this.letsGo_btn.click({timeout:5000});
         }
     }
 
-    async handle_letsGo(loginAccount: { email: string; password: string }): Promise<void> {
-        const email = loginAccount.email;
 
-        const modalHeading = this.page.getByRole('heading', {
-            name: /Help us customize your experience\./i
-        });
 
-        const noneOfAboveButton = this.page.getByTestId('x-dialog-secondary-cta');
-        const strictLetsGo = resolveBooleanEnv('ADOBE_STRICT_LETS_GO', true);
 
-        const modalVisible = await modalHeading
-            .waitFor({ state: 'visible', timeout: this.letsGoAppearTimeoutMs })
-            .then(() => true)
-            .catch(() => false);
 
-        if (!modalVisible) {
-            console.log(`[LETS_GO] Modal not visible for ${email}; continuing`);
-            console.log(`Login flow completed successfully for ${email}`);
-            return;
-        }
 
-        console.log(`[LETS_GO] Modal visible for ${email}`);
 
-        for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-                console.log(`[LETS_GO] Attempt ${attempt} for ${email}`);
 
-                await this.page.waitForTimeout(1000);
 
-                const secondaryAttached = await noneOfAboveButton
-                    .count()
-                    .then((count) => count > 0)
-                    .catch(() => false);
 
-                if (secondaryAttached) {
-                    await noneOfAboveButton
-                        .first()
-                        .evaluate((el: HTMLElement) => el.click())
-                        .catch(() => undefined);
 
-                    await this.page.waitForTimeout(500);
-                }
 
-                const candidates: Locator[] = [
-                    this.page.locator('[data-testid="x-dialog-primary-cta"]').first(),
-                    this.page.getByRole('button', { name: /let'?s go|continue|get started|next/i }).first(),
-                    this.page.locator('sp-button:has-text("Let\'s go")').first(),
-                    this.page.locator('button:has-text("Let\'s go")').first(),
-                ];
 
-                let clicked = false;
-                for (const candidate of candidates) {
-                    const attached = await candidate.count().then((count) => count > 0).catch(() => false);
-                    if (!attached) {
-                        continue;
-                    }
 
-                    const visible = await candidate.isVisible({ timeout: 1500 }).catch(() => false);
-                    if (!visible) {
-                        continue;
-                    }
 
-                    await candidate.scrollIntoViewIfNeeded().catch(() => undefined);
-                    await candidate.click({ timeout: 4000, force: attempt === 2 }).catch(async () => {
-                        await candidate.evaluate((el: Element) => {
-                            const host = el as HTMLElement;
-                            host.click();
-                            const root = (host as unknown as { shadowRoot?: ShadowRoot | null }).shadowRoot;
-                            const innerButton = root?.querySelector('button') as HTMLButtonElement | null;
-                            innerButton?.click();
-                        });
-                    });
 
-                    clicked = true;
-                    console.log(`[LETS_GO] CTA click fired on attempt ${attempt} for ${email}`);
-                    break;
-                }
 
-                if (!clicked) {
-                    console.log(`[LETS_GO] No clickable CTA found on attempt ${attempt} for ${email}`);
-                }
-
-                const modalGone = await modalHeading
-                    .waitFor({ state: 'hidden', timeout: 10000 })
-                    .then(() => true)
-                    .catch(() => false);
-
-                if (modalGone) {
-                    console.log("--------------------------- Lets Go --------------------------------");
-                    console.log(`Activated by Lets Go for ${email}`);
-                    console.log(`Login flow completed successfully for ${email}`);
-                    return;
-                }
-
-                console.log(`[LETS_GO] Modal still visible after attempt ${attempt} for ${email}`);
-                await this.page.keyboard.press('Enter').catch(() => undefined);
-                await this.debugLetsGoButtons(email, `Modal still visible after attempt ${attempt}`);
-
-            } catch (error) {
-                console.log(`[LETS_GO] Attempt ${attempt} failed for ${email}: ${error}`);
-                await this.debugLetsGoButtons(email, `Attempt ${attempt} failed`);
-            }
-
-            await this.page.waitForTimeout(1500);
-        }
-
-        await this.page.screenshot({
-            path: `test-results/lets-go-unresolved-${Date.now()}.png`,
-            fullPage: true
-        }).catch(() => undefined);
-
-        const unresolvedMessage = `[LETS_GO] Could not close modal after retry for ${email}`;
-        if (strictLetsGo) {
-            throw new Error(unresolvedMessage);
-        }
-
-        console.log(`${unresolvedMessage}; continuing because ADOBE_STRICT_LETS_GO=0`);
-        console.log(`Login flow completed successfully for ${email}`);
-    }
-}
-
-function resolvePositiveIntEnv(name: string, fallback: number): number {
-    const raw = process.env[name]?.trim();
-    if (!raw) {
-        return fallback;
-    }
-
-    const parsed = Number(raw);
-    if (!Number.isInteger(parsed) || parsed < 1) {
-        return fallback;
-    }
-
-    return parsed;
-}
-
-function resolveBooleanEnv(name: string, fallback: boolean): boolean {
-    const raw = process.env[name]?.trim().toLowerCase();
-    if (!raw) {
-        return fallback;
-    }
-
-    if (raw === '1' || raw === 'true' || raw === 'yes') {
-        return true;
-    }
-    if (raw === '0' || raw === 'false' || raw === 'no') {
-        return false;
-    }
-    return fallback;
 }

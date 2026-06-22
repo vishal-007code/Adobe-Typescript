@@ -2,6 +2,7 @@ import path from 'node:path';
 
 export const ADOBE_ACCOUNT_ATTACHMENT = 'adobe-account';
 export const ADOBE_STEP_ATTACHMENT = 'adobe-step';
+export const ADOBE_LINK_ATTACHMENT = 'adobe-link';
 export const ADOBE_NO_FRESH_ACCOUNTS_REASON = 'No fresh accounts available';
 
 export const ADOBE_RESULTS_HEADERS = [
@@ -11,6 +12,7 @@ export const ADOBE_RESULTS_HEADERS = [
   'failed_at_step',
   'failure_reason',
   'duration_ms',
+  'published_link',
 ] as const;
 
 export const ADOBE_CONSUMED_HEADERS = ['email', 'consumed_at'] as const;
@@ -35,6 +37,10 @@ export function getAdobeConsumedLedgerPath(cwd: string = process.cwd()): string 
 export function getAdobeResultsPath(now: Date = new Date(), cwd: string = process.cwd()): string {
   const timestamp = now.toISOString().replace(/[:-]/g, '').replace(/\.\d{3}Z$/, 'Z');
   return path.join(getReportsDir(cwd), `adobe_results_${timestamp}.csv`);
+}
+
+export function getAdobeResultsPathForRun(runId: string, cwd: string = process.cwd()): string {
+  return path.join(getReportsDir(cwd), `adobe_results_${runId}.csv`);
 }
 
 export function requireAdobeRunId(env: NodeJS.ProcessEnv = process.env): string {
