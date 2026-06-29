@@ -43,6 +43,13 @@ export default class AdobeCsvReporter implements Reporter {
     const mappedStatus = mapStatus(result.status);
     const email = accountMetadata?.email?.trim().toLowerCase() ?? '';
 
+    // Emit a stable, greppable per-account line to stdout so the outcome survives in
+    // the Cloud Run logs even when results are not uploaded to GCS (SAVE_ARTIFACTS=false).
+    // scripts/build-resume-csv.sh parses these lines to rebuild a CSV of accounts to retry.
+    if (email) {
+      console.log(`[ADOBE_RESULT] status=${mappedStatus} email=${email}`);
+    }
+
     // Write result row immediately — visible in the CSV as each test finishes.
     appendCsvRow(this.resultsPath, ADOBE_RESULTS_HEADERS, [
       result.startTime.toISOString(),

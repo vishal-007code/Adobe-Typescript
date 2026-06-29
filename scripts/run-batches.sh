@@ -22,12 +22,18 @@ ACCOUNTS_BUCKET="${ACCOUNTS_BUCKET:-${PROJECT_ID}-adobe-accounts}"
 REPORTS_BUCKET="${REPORTS_BUCKET:-${ACCOUNTS_BUCKET}}"
 
 INPUT_CSV="${INPUT_CSV:-accounts.csv}"
-TOTAL_ACCOUNTS="${TOTAL_ACCOUNTS:-20578}"
+TOTAL_ACCOUNTS="${TOTAL_ACCOUNTS:-30300}"
 BATCH_SIZE="${BATCH_SIZE:-5000}"
 
 CPU="${CPU:-2}"
 MEMORY="${MEMORY:-8Gi}"
-PARALLELISM="${PARALLELISM:-1}"
+# Concurrent tasks per job. Throughput = (num batches) x PARALLELISM x WORKERS accounts in flight.
+# At 30300 accounts with the full flow + ~3.5 min dashboard dwell (~6 min/account), PARALLELISM=12
+# targets a ~1-day finish. Peak footprint: 7 batches x 12 x 2 workers x 2 CPU = ~336 CPUs, well
+# within the project's 20,000 CPU quota in asia-south1 — no quota increase needed.
+# Note: at this concurrency the practical limiter is Adobe-side rate-limiting/login stability, not GCP.
+# Want it gentler? Lower PARALLELISM (e.g. 6 -> ~2 days, 3 -> ~Fri).
+PARALLELISM="${PARALLELISM:-12}"
 ADOBE_PLAYWRIGHT_WORKERS="${ADOBE_PLAYWRIGHT_WORKERS:-2}"
 ADOBE_SCRIPT_ACCOUNT_LIMIT="${ADOBE_SCRIPT_ACCOUNT_LIMIT:-21}"
 ADOBE_STOP_AFTER_LOGIN="${ADOBE_STOP_AFTER_LOGIN:-1}"
@@ -36,6 +42,7 @@ ADOBE_LETS_GO_APPEAR_TIMEOUT_MS="${ADOBE_LETS_GO_APPEAR_TIMEOUT_MS:-60000}"
 ADOBE_STRICT_LETS_GO="${ADOBE_STRICT_LETS_GO:-1}"
 ADOBE_VIDEO_MODE="${ADOBE_VIDEO_MODE:-off}"
 ADOBE_DEBUG_ARTIFACTS="${ADOBE_DEBUG_ARTIFACTS:-0}"
+SAVE_ARTIFACTS="${SAVE_ARTIFACTS:-false}"
 TASK_TIMEOUT="${TASK_TIMEOUT:-8h}"
 BASE_JOB_NAME="${BASE_JOB_NAME:-adobe-login-flow}"
 
@@ -46,6 +53,22 @@ LOG_DIR="tmp/batch-logs-${RUN_ID}"
 mkdir -p "$BATCH_DIR" "$LOG_DIR"
 
 log() { echo "[BATCHES][$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
+
+# ── Pre-flight: Cloud Run CPU quota check (set CHECK_QUOTA=1 to enable) ────────
+# This run needs ~(num batches x PARALLELISM x WORKERS x CPU) CPUs concurrently
+# in ${REGION}. If that exceeds your "Total CPU allocation" limit, jobs queue or
+# fail to scale. Run the command below (or set CHECK_QUOTA=1) before launching.
+if [[ "${CHECK_QUOTA:-0}" == "1" ]]; then
+  num_batches=$(( (TOTAL_ACCOUNTS + BATCH_SIZE - 1) / BATCH_SIZE ))
+  needed_cpus=$(( num_batches * PARALLELISM * ADOBE_PLAYWRIGHT_WORKERS * CPU ))
+  log "Estimated peak CPUs needed in ${REGION}: ${needed_cpus}"
+  log "Current Cloud Run CPU quota in ${REGION}:"
+  gcloud beta quotas info list \
+    --service=run.googleapis.com \
+    --project="${PROJECT_ID}" \
+    --format="value(quotaId,dimensionsInfos.details.value)" 2>/dev/null \
+    | grep -i cpu || log "  (could not read quota — check the console link in the script comments)"
+fi
 
 if [[ ! -f "$INPUT_CSV" ]]; then
   echo "ERROR: input CSV not found: $INPUT_CSV"
@@ -66,6 +89,7 @@ log "Parallelism:   ${PARALLELISM} (tasks running at once per job)"
 log "Workers:       ${ADOBE_PLAYWRIGHT_WORKERS}"
 log "Acct limit:    ${ADOBE_SCRIPT_ACCOUNT_LIMIT}"
 log "Stop after login: ${ADOBE_STOP_AFTER_LOGIN}"
+log "Save to GCS:   ${SAVE_ARTIFACTS} (false = logs only, no bucket uploads)"
 log "============================================================"
 
 # ── Split CSV into batches ────────────────────────────────────────────────────
@@ -134,7 +158,8 @@ ADOBE_SCRIPT_ACCOUNT_LIMIT=${ADOBE_SCRIPT_ACCOUNT_LIMIT},\
 ADOBE_LETS_GO_APPEAR_TIMEOUT_MS=${ADOBE_LETS_GO_APPEAR_TIMEOUT_MS},\
 ADOBE_STRICT_LETS_GO=${ADOBE_STRICT_LETS_GO},\
 ADOBE_VIDEO_MODE=${ADOBE_VIDEO_MODE},\
-ADOBE_DEBUG_ARTIFACTS=${ADOBE_DEBUG_ARTIFACTS}"
+ADOBE_DEBUG_ARTIFACTS=${ADOBE_DEBUG_ARTIFACTS},\
+SAVE_ARTIFACTS=${SAVE_ARTIFACTS}"
 
     step "Executing ${job_name} (waiting for completion)..."
     gcloud run jobs execute "${job_name}" \
