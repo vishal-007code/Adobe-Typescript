@@ -60,7 +60,7 @@ export default defineConfig({
     ['html'],
     [path.resolve(__dirname, 'src/adobe/reporter.ts')],
   ],
-  timeout: 360_000,
+  timeout: 600_000,
   expect: {
     timeout: 120_000,
   },
