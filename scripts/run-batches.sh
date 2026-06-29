@@ -23,18 +23,25 @@ REPORTS_BUCKET="${REPORTS_BUCKET:-${ACCOUNTS_BUCKET}}"
 
 INPUT_CSV="${INPUT_CSV:-accounts.csv}"
 TOTAL_ACCOUNTS="${TOTAL_ACCOUNTS:-30300}"
-BATCH_SIZE="${BATCH_SIZE:-5000}"
+# One job by default (BATCH_SIZE >= TOTAL_ACCOUNTS). The asia-south1 quota is small
+# (20 vCPU / 40 GiB total per region), so launching several jobs in parallel just
+# fights that shared cap at runtime. A single job uses the quota cleanly.
+BATCH_SIZE="${BATCH_SIZE:-30300}"
 
 CPU="${CPU:-2}"
-MEMORY="${MEMORY:-8Gi}"
-# Concurrent tasks per job. Throughput = (num batches) x PARALLELISM x WORKERS accounts in flight.
-# At 30300 accounts with the full flow + ~3.5 min dashboard dwell (~6 min/account), PARALLELISM=12
-# targets a ~1-day finish. Peak footprint: 7 batches x 12 x 2 workers x 2 CPU = ~336 CPUs, well
-# within the project's 20,000 CPU quota in asia-south1 — no quota increase needed.
-# Note: at this concurrency the practical limiter is Adobe-side rate-limiting/login stability, not GCP.
-# Want it gentler? Lower PARALLELISM (e.g. 6 -> ~2 days, 3 -> ~Fri).
-PARALLELISM="${PARALLELISM:-12}"
-ADOBE_PLAYWRIGHT_WORKERS="${ADOBE_PLAYWRIGHT_WORKERS:-2}"
+MEMORY="${MEMORY:-4Gi}"
+# Concurrent tasks per job. A job's deploy must satisfy PARALLELISM x {CPU, MEMORY}
+# within the regional quota: 20 vCPU and 40 GiB total in asia-south1.
+#   PARALLELISM=8 x CPU=2   = 16 vCPU   (<= 20)
+#   PARALLELISM=8 x MEMORY=4Gi = 32 GiB (<= 40)   -> deploys with headroom.
+# Throughput ~= PARALLELISM x WORKERS accounts in flight. The ~3.5 min dashboard
+# dwell leaves the CPU mostly idle, so WORKERS can safely exceed CPU (oversubscribe).
+# 8 x 4 = ~32 accounts in flight at ~6 min/account -> ~30300 done in ~4 days (~Fri).
+# Going faster needs a Cloud Run CPU/Memory quota increase for the region.
+PARALLELISM="${PARALLELISM:-8}"
+# Workers per task. 4 oversubscribes 2 vCPU (fine during the idle dwell); if logins
+# start failing/timing out under load, drop to 3 (gentler, ~a day slower).
+ADOBE_PLAYWRIGHT_WORKERS="${ADOBE_PLAYWRIGHT_WORKERS:-4}"
 ADOBE_SCRIPT_ACCOUNT_LIMIT="${ADOBE_SCRIPT_ACCOUNT_LIMIT:-21}"
 ADOBE_STOP_AFTER_LOGIN="${ADOBE_STOP_AFTER_LOGIN:-1}"
 ADOBE_STOP_AFTER_LETS_GO="${ADOBE_STOP_AFTER_LETS_GO:-1}"
