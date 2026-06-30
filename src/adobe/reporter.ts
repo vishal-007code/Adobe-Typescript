@@ -45,9 +45,17 @@ export default class AdobeCsvReporter implements Reporter {
 
     // Emit a stable, greppable per-account line to stdout so the outcome survives in
     // the Cloud Run logs even when results are not uploaded to GCS (SAVE_ARTIFACTS=false).
-    // scripts/build-resume-csv.sh parses these lines to rebuild a CSV of accounts to retry.
+    // scripts/build-resume-csv.sh parses these lines (it only needs status + email).
+    // For failures we also append the last step and a short reason so the cause is
+    // diagnosable straight from the logs without uploading the CSV/HTML report.
     if (email) {
-      console.log(`[ADOBE_RESULT] status=${mappedStatus} email=${email}`);
+      if (mappedStatus === 'failed') {
+        const step = (stepMetadata?.lastStep?.trim() ?? '').replace(/"/g, "'");
+        const reason = getFailureReason(test, result, mappedStatus).slice(0, 300).replace(/"/g, "'");
+        console.log(`[ADOBE_RESULT] status=failed email=${email} step="${step}" reason="${reason}"`);
+      } else {
+        console.log(`[ADOBE_RESULT] status=${mappedStatus} email=${email}`);
+      }
     }
 
     // Write result row immediately — visible in the CSV as each test finishes.
