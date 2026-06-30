@@ -39,9 +39,11 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   stepTracker.setStep('Activate by Lets Go');
   await adobe.skipLetsGoViaAPI(account.email);
 
-  // Dwell on the dashboard for ~3-4 min once the Let's Go process is done.
+  // Dwell for ~3-4 min once the Let's Go process is done. Use a page-independent
+  // timer (not page.waitForTimeout) so the wait isn't tied to the page lifecycle —
+  // the dashboard stays loaded in the background for the full duration.
   stepTracker.setStep('Dwell on dashboard (3-4 min)');
-  await page.waitForTimeout(210_000);
+  await new Promise((resolve) => setTimeout(resolve, 210_000));
 
   stepTracker.setStep('Setup Canvas');
   await adobe.createTemplate();
