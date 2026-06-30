@@ -136,6 +136,17 @@ export class AdobePage {
         }
     }
 
+    /**
+     * Dwell on the dashboard for a fixed duration after the Let's Go step.
+     * This is a passive pause — the dashboard stays loaded but no activity is
+     * generated. (page.waitForTimeout and a plain setTimeout are equivalent;
+     * a page-independent timer is used here so the wait isn't tied to the page.)
+     * @param ms duration in milliseconds (default ~3.5 min)
+     */
+    async dwellOnDashboard(ms: number = 210_000): Promise<void> {
+        await new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     async isLetsGoIndicator_Visible(): Promise<boolean> {
         try {
             // Waits up to 5000ms (5 seconds) for the element to be visible
