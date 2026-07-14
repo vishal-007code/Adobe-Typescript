@@ -61,12 +61,12 @@ Each step below maps to a `stepTracker.setStep(...)` call in [script.spec.ts](fi
 | 5 | `Login with <provider>` | `g_login()` or `ms_login()` | `GmailProvider` / `MsProvider` | Performs SSO login through the detected provider (see §4) |
 | 6 | `Wait for Adobe Dashboard` | `waitForDashboard()` | `AdobePage` | Waits for URL to match `new.express.adobe.com`; throws if it never lands |
 | 7 | `Activate by Lets Go` | `skipLetsGoViaAPI(email)` | `AdobePage` | Fires a `PATCH` to Adobe's UDS API to set `education-survey.role = "student"` (~0.7s). Auth header and ownerEntity are captured passively from UDS requests during dashboard load. Falls back to `handle_letsGo()` UI click if capture fails. |
-| 8 | `Setup Canvas` | `createTemplate()` | `AdobePage` | Clicks **"Create new"**, then the **"Square"** template — opens the editor with the template/search panel |
+| 8 | `Setup Canvas` | `createTemplate()` | `AdobePage` | Clicks **"Create new"**, then the **"Square"** template, and waits for the editor template search to become enabled |
 | 9 | `Skip Tutorial dialog if visible` | `skipTutorial()` | `EditorDashboard` | Registers an `addLocatorHandler` that auto-dismisses the "Try the updated editor" **coachmark** ("Skip tour") whenever it appears; also dismisses a "Got it" popup if present |
 | 10 | `Search Template` | `getRandomSearchKeyword()` + `searchForTemplate(keyword)` | `AdobePage` | Picks a random keyword from the pool, clicks the search bar, types the keyword, presses Enter |
 | 11 | `Select Template` | `selectTemplate(keyword)` | `AdobePage` | Asserts the results-count text (format-tolerant), then clicks the first result via its own DOM click handler to bypass hover-preview `<video>` / search-plugin overlays |
 | 12 | `Click Share button` | `clickShare()` | `EditorDashboard` | Clicks Share button (`#share-btn`) in editor nav bar |
-| 13 | `Open View Only Link` | `openViewOnlyLink()` | `EditorDashboard` | Waits up to **180s** for the "View-only link" menuitem (covers slow file prep), then clicks it |
+| 13 | `Open View Only Link` | `openViewOnlyLink()` | `EditorDashboard` | Waits up to **180s** (covers slow file prep) for whichever share-panel variant appears, then opens the Create-link flow: classic **"View-only link" menuitem**, or the new **"Share file" panel's "Publish" tab** |
 | 14 | `Click Create Link button` | `clickCreateLink()` | `EditorDashboard` | Clicks "Create link"; waits for **either** the "Copy link" button **or** the rendered published URL (handles both panel variants) |
 | 15 | `Click Copy Link button` | `clickCopyLink()` | `EditorDashboard` | Clicks "Copy link" if present (best-effort), then reads the URL from the rendered `publishedV2` link and returns it |
 | 16 | *(assertion)* | `expect(link).toBeTruthy()` | — | Verifies the published link is non-empty; attaches it to the test result for the CSV report |
@@ -154,7 +154,7 @@ Locators are defined in the [AdobePage constructor](file:///c:/Users/QA/Webstorm
 | `startUdsCapture()` | Begin passively intercepting UDS requests for auth + ownerEntity | **Call once**, before dashboard loads |
 | `skipLetsGoViaAPI(email)` | Dismiss Let's Go via `PATCH` API; falls back to UI click | Requires `startUdsCapture()` to have been called |
 | `handle_letsGo(email)` | Wait for Let's Go dialog + click button | Retained as fallback, 20s timeout, soft-fail |
-| `createTemplate()` | Click "Create new" → "Square" to open a canvas | Enabled/visible gating before each click |
+| `createTemplate()` | Click "Create new" → "Square" to open a canvas | Enabled/visible gating before each click; waits through the editor's "Getting everything ready" state until template search is enabled |
 | `getRandomSearchKeyword()` | Return a random keyword from the pool | Synchronous; pool defined in constructor |
 | `searchForTemplate(keyword)` | Click search bar, type keyword, press Enter | Coachmark interception handled by `skipTutorial`'s `addLocatorHandler` |
 | `selectTemplate(keyword)` | Assert results then click the first result | Format-tolerant count assertion; clicks via the element's own click handler to bypass overlays |
@@ -183,7 +183,7 @@ All locators defined in the [EditorDashboard constructor](file:///c:/Users/QA/We
 | `clickOpenInEditor()` | Click "Open in editor" button | **Legacy** — not in active flow; 20s timeout |
 | `skipTutorial()` | Auto-dismiss the editor coachmark tour | Registers `page.addLocatorHandler('Skip tour', …)` so the "Try the updated editor" overlay is cleared whenever it appears (no fixed wait); also dismisses "Got it" if present |
 | `clickShare()` | Click Share button in editor nav bar | Fail-fast: 20s enabled-gate |
-| `openViewOnlyLink()` | Wait for + click the "View-only link" menuitem | Waits up to **180s** for the menuitem (end-state wait that covers slow file prep), then clicks |
+| `openViewOnlyLink()` | Open the Create-link flow (variant-aware) | Waits up to **180s** (covers slow file prep) for whichever entry point appears, then opens it: classic **"View-only link" menuitem** or the new **"Share file" panel's "Publish" tab**. Then waits up to **180s** for "Create link" |
 | `clickCreateLink()` | Click "Create link" to generate the URL | Waits for **either** the "Copy link" button **or** the rendered published URL — supports both share-panel variants |
 | `clickCopyLink()` | Read the published view-only URL | Clicks "Copy link" if present (best-effort); the rendered `publishedV2` `<a href>` is the source of truth. Returns the URL string |
 
@@ -310,13 +310,18 @@ flowchart LR
 > **Format-tolerant results assertion:** The results-count text varies — it echoes the query for narrow searches (`878 results for "Birthday"`) but shows a generic count for large categories (`11,000+ results`). `selectTemplate()` verifies the keyword only when the text echoes it; otherwise it just confirms results were returned.
 
 > [!NOTE]
-> **Share-panel variants:** After "Create link", some accounts show a labeled "Copy link" button while others render the link directly with an icon-only copy control. `clickCreateLink()` waits for whichever appears, and `clickCopyLink()` reads the rendered `publishedV2` `<a href>` as the source of truth (clicking "Copy link" only when present).
+> **Share-panel variants:** The Share panel renders in two shapes. **Classic:** a "View-only link" menuitem → "Create link" → "Copy link". **New "Share file" panel:** Share/Publish tabs, where the default *Share* tab only offers an access dropdown + a plain document "Copy link", and the *Publish* tab (`getByRole('tab', { name: 'Publish' })`) hosts the "Create link" flow that produces the `publishedV2` URL. `openViewOnlyLink()` detects which entry point is present and opens it; `clickCreateLink()`/`clickCopyLink()` then handle both downstream layouts (labeled "Copy link" button vs. icon-only control), reading the rendered `publishedV2` `<a href>` as the source of truth.
 
 > [!NOTE]
-> **View-only prep timeout:** After clicking Share, Adobe shows "We're working on your file…" while it prepares the document; the share options appear only once that completes. `openViewOnlyLink()` waits directly for the "View-only link" menuitem (the end state) for up to **180s**, rather than racing the prep message. Some files prep even slower and may still time out — that is Adobe-side slowness.
+> **View-only prep timeout:** After clicking Share, Adobe shows "We're working on your file…" while it prepares the document; the share options appear only once that completes. `openViewOnlyLink()` waits directly for the end state — either share-panel entry point, then the "Create link" control — for up to **180s** each, rather than racing the prep message. Some files prep even slower and may still time out — that is Adobe-side slowness.
+
+> [!NOTE]
+> **"Choose your language" prompt:** A regional prompt ("Based on your region, we think you may prefer…") can appear after the dashboard is actionable — often while the Create panel or editor loads — and intercepts clicks (e.g. it blocked `createTemplate`). It is **not** exposed as `role="dialog"`, so `installDashboardInterruptionHandlers()` registers a `page.addLocatorHandler` keyed on the **heading** `getByRole('heading', { name: 'Choose your language' })` and clicks "Continue" (accepting the suggested language) to dismiss it whenever it appears.
 
 > [!NOTE]
 > **API-based Let's Go dismissal:** The "Let's Go" onboarding dialog is dismissed via a direct `PATCH` to `https://new.express.adobe.com/service/uds/userdocs/uds-projectx`, setting `education-survey.role = "student"` (~0.7s vs ~10.6s for the UI click). `startUdsCapture()` passively intercepts UDS requests during login/dashboard load to capture the `authorization` header and `ownerEntity`; on failure it falls back to `handle_letsGo()`.
+>
+> The API write persists the preference **server-side**, but the already-mounted client survey doesn't re-read it — so on some accounts the `<x-edu-user-role-survey-modal>` ("Help us customize your experience.") still renders **late** (e.g. during `createTemplate`) and intercepts clicks. `installDashboardInterruptionHandlers()` therefore also registers a persistent `page.addLocatorHandler` on that heading that clicks the primary CTA ("Let's go") — a reactive safety-net for the render-race the API call can't cover.
 
 > [!NOTE]
 > **Legacy image-generation path:** `shortcut()`, `wait_for_generation()`, `download_img()` (AdobePage) and `clickOpenInEditor()` (EditorDashboard) belong to the original Text-to-Image generate-and-download flow. They are retained but commented out of `script.spec.ts`; the active flow uses the template search + view-only-link path.

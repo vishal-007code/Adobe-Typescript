@@ -26,6 +26,7 @@ export class AdobePage {
     private capturedAuthHeader = '';
     private capturedOwnerEntity = '';
     private udsCapturing = false;
+    private dashboardHandlersInstalled = false;
 
 
     private randomSearchKeywords : string[];
@@ -128,12 +129,47 @@ export class AdobePage {
             throw new Error(`Failed to navigate to Adobe Dashboard (new.express.adobe.com). Login likely failed. Original error: ${e}`);
         }
 
+        await this.installDashboardInterruptionHandlers();
+
         try {
             // Wait for network to settle so UDS requests fire and auth credentials are captured
             await this.page.waitForLoadState('load', { timeout: 30_000 });
         } catch (e) {
             console.log('waitForDashboard: page load did not fully settle on Load', e);
         }
+    }
+
+    private async installDashboardInterruptionHandlers(): Promise<void> {
+        if (this.dashboardHandlersInstalled) return;
+        this.dashboardHandlersInstalled = true;
+
+        // The "Choose your language" regional prompt is NOT exposed as role="dialog",
+        // so an earlier dialog-role trigger never matched and the prompt kept blocking
+        // later steps (e.g. createTemplate). Trigger on the heading itself, which is
+        // the element that actually renders.
+        const languageHeading = this.page.getByRole('heading', { name: 'Choose your language', exact: true });
+
+        // This regional prompt can appear after the dashboard is already actionable,
+        // including while the Create panel or editor is loading. Accept the suggested
+        // language by clicking "Continue" to dismiss it. Click FIRST (fast) so the
+        // intercepted action can proceed before any step times out.
+        await this.page.addLocatorHandler(languageHeading, async () => {
+            console.log('installDashboardInterruptionHandlers: "Choose your language" prompt detected — clicking Continue');
+            await this.page.getByRole('button', { name: 'Continue', exact: true }).click({ timeout: 10_000 });
+        });
+
+        // The "Let's Go" education survey ("Help us customize your experience.") can
+        // still surface in the UI even after skipLetsGoViaAPI — sometimes LATE, e.g.
+        // while createTemplate runs — because the API write persists the preference
+        // server-side but the already-mounted client survey doesn't re-read it. Its
+        // <x-edu-user-role-survey-modal> then overlays the page and intercepts clicks
+        // (e.g. "Create new"). A one-shot dismissal misses that timing, so register a
+        // persistent handler: accept the default "I'm a student" selection by clicking
+        // the primary CTA ("Let's go").
+        await this.page.addLocatorHandler(this.letsGoIndicator, async () => {
+            console.log('installDashboardInterruptionHandlers: "Let\'s Go" survey detected — clicking Let\'s go');
+            await this.letsGo_btn.click({ timeout: 10_000 });
+        });
     }
 
     async isLetsGoIndicator_Visible(): Promise<boolean> {
@@ -272,8 +308,12 @@ export class AdobePage {
     async createTemplate(): Promise<void> {
         await expect(this.createNew).toBeEnabled({timeout:20000})
         await this.createNew.click({timeout:20000});
-        await expect(this.squareTemplate).toBeVisible({timeout:10000})
-        await this.squareTemplate.click({timeout:10000});   
+        await expect(this.squareTemplate).toBeVisible({timeout:60000})
+        await this.squareTemplate.click({timeout:20000});
+
+        // Clicking the card only starts editor initialization. Do not let the next
+        // workflow step race Adobe's "Getting everything ready" loading screen.
+        await expect(this.searchBar).toBeEnabled({timeout:90000});
     }
 
     getRandomSearchKeyword(): string {
@@ -282,7 +322,7 @@ export class AdobePage {
     }
 
     async searchForTemplate(templateName: string): Promise<void> {
-        await expect(this.searchBar).toBeEnabled({timeout:20000})
+        await expect(this.searchBar).toBeEnabled({timeout:30000})
         // A late "Try the updated editor" coachmark can intercept this click; the
         // addLocatorHandler registered in EditorDashboard.skipTutorial auto-dismisses
         // it and retries, so no explicit guard is needed here.
