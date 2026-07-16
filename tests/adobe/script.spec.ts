@@ -39,6 +39,16 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   stepTracker.setStep('Activate by Lets Go');
   await adobe.skipLetsGoViaAPI(account.email);
 
+  // Bulk "login till Let's Go" mode: stop right after the Let's Go step, skipping
+  // the dashboard dwell + template + share-link flow. run-batches.sh sets
+  // ADOBE_STOP_AFTER_LETS_GO=1 for the large login-only production run so each
+  // account finishes in ~login time instead of ~6 min. Unset (or !=1) runs the
+  // full flow (local/full runs) unchanged.
+  if (process.env.ADOBE_STOP_AFTER_LETS_GO?.trim() === '1') {
+    stepTracker.setStep('Stop after Lets Go');
+    return;
+  }
+
   // Dwell on the dashboard for ~3-4 min once the Let's Go process is done.
   stepTracker.setStep('Dwell on dashboard (3-4 min)');
   await adobe.dwellOnDashboard();
