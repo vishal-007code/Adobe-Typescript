@@ -21,6 +21,7 @@ export class AdobePage {
     readonly searchBar : Locator;
     readonly resultCountText : Locator;
     readonly templateResult : Locator;
+    readonly dashboardSearch : Locator;
 
     // UDS credential capture (for API-based Let's Go dismissal)
     private capturedAuthHeader = '';
@@ -51,6 +52,7 @@ export class AdobePage {
         this.randomSearchKeywords = ['Yoga Day', 'Festival', 'Birthday', 'Sale', 'Wedding'];
         this.resultCountText = page.getByTestId('results-count-text');
         this.templateResult = page.locator('button.thumbnail-button-filler').first();
+        this.dashboardSearch = page.getByRole('textbox', { name: /Search for templates and more/i });
     }
 
     async adb_login(): Promise<void> {
@@ -169,6 +171,16 @@ export class AdobePage {
         await this.page.addLocatorHandler(this.letsGoIndicator, async () => {
             console.log('installDashboardInterruptionHandlers: "Let\'s Go" survey detected — clicking Let\'s go');
             await this.letsGo_btn.click({ timeout: 10_000 });
+        });
+
+        // The "Choose your country" regional prompt behaves like "Choose your language":
+        // it can surface on the dashboard (e.g. before/while searching templates) and
+        // block later steps. Same pattern — trigger on the heading, accept by clicking
+        // "Continue". Persistent so it's dismissed whenever it appears during the run.
+        const countryHeading = this.page.getByRole('heading', { name: 'Choose your country', exact: true });
+        await this.page.addLocatorHandler(countryHeading, async () => {
+            console.log('installDashboardInterruptionHandlers: "Choose your country" prompt detected — clicking Continue');
+            await this.page.getByRole('button', { name: 'Continue', exact: true }).click({ timeout: 10_000 });
         });
     }
 
@@ -350,5 +362,41 @@ export class AdobePage {
         // is intercepted. Invoke the button's own click handler directly to bypass the
         // occluding layers.
         await this.templateResult.evaluate((el) => (el as HTMLElement).click());
+    }
+
+    // Dashboard-level template search — searches templates directly from the dashboard
+    // (no blank canvas), then opens a result in the editor. Real keystrokes drive the
+    // type-ahead dropdown, so pressSequentially (not fill): a programmatic fill can set
+    // the value without rendering the suggestion dropdown. No Enter press — submitting
+    // would close the dropdown; instead click the suggestion while it's open.
+    async searchDashboardTemplate(templateName: string): Promise<void> {
+        await expect(this.dashboardSearch).toBeVisible({timeout:30000});
+        await this.dashboardSearch.click({timeout:20000});
+        // Type with a per-keystroke delay: the type-ahead suggestion dropdown reacts to
+        // input events, so typing too fast can populate the field without the dropdown
+        // ever rendering. The delay lets suggestions catch up before we click one.
+        await this.dashboardSearch.pressSequentially(templateName, { delay: 150 });
+        // Wait for the suggestion to actually render before clicking it.
+        const suggestion = this.page.getByText(templateName).first();
+        await suggestion.waitFor({ state: 'visible', timeout: 15000 });
+        await suggestion.click({timeout:20000});
+        await expect(this.resultCountText).toBeVisible({timeout:30000});
+    }
+
+    // Pick a random result thumbnail. The grid lazy-loads (~30 render initially), so we
+    // assert the grid is present rather than pinning an exact count. Result thumbnails
+    // are animated (hover-preview <video>) with a sticky search header overlaying the
+    // filler button, so a real click gets intercepted — invoke the element's own click
+    // handler directly to bypass the occluding layers (mirrors selectTemplate).
+    async selectRandomTemplate(): Promise<void> {
+        const thumbs = this.page.locator('button.thumbnail-button-filler');
+        await expect(thumbs.first()).toBeVisible({timeout:30000});
+        const count = await thumbs.count();
+        expect(count).toBeGreaterThan(0);
+        const index = Math.floor(Math.random() * count);
+        console.log(`selectRandomTemplate: clicking thumbnail ${index + 1} of ${count}`);
+        const target = thumbs.nth(index);
+        await target.scrollIntoViewIfNeeded();
+        await target.evaluate((el) => (el as HTMLElement).click());
     }
 }

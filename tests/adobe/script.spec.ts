@@ -39,18 +39,28 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   stepTracker.setStep('Activate by Lets Go');
   await adobe.skipLetsGoViaAPI(account.email);
 
-  stepTracker.setStep('Setup Canvas');
-  await adobe.createTemplate();
+  // ── OLD flow (blank Square canvas → search inside editor) — replaced by v7's dashboard search ──
+  // stepTracker.setStep('Setup Canvas');
+  // await adobe.createTemplate();
 
-  stepTracker.setStep('Skip Tutorial dialog if visible');
-  await editor.skipTutorial();
+  // stepTracker.setStep('Search Template');
+  // const keyword: string = adobe.getRandomSearchKeyword()
+  // await adobe.searchForTemplate(keyword);
 
+  // stepTracker.setStep('Select Template');
+  // await adobe.selectTemplate(keyword);
+
+  // ── NEW flow (from v7): search templates on the dashboard, click a random result ──
   stepTracker.setStep('Search Template');
-  const keyword: string = adobe.getRandomSearchKeyword()
-  await adobe.searchForTemplate(keyword);
+  await adobe.searchDashboardTemplate('Postcard');
 
   stepTracker.setStep('Select Template');
-  await adobe.selectTemplate(keyword);
+  await adobe.selectRandomTemplate();
+
+  // The editor's tutorial/coachmark still appears after a template opens; skipTutorial
+  // registers a persistent "Skip tour" handler that also protects the Share click.
+  stepTracker.setStep('Skip Tutorial dialog if visible');
+  await editor.skipTutorial();
 
   // stepTracker.setStep('Redirect to edit');
   // await adobe.shortcut();
