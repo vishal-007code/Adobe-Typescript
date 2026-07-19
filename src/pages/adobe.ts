@@ -152,13 +152,17 @@ export class AdobePage {
         const languageHeading = this.page.getByRole('heading', { name: 'Choose your language', exact: true });
 
         // This regional prompt can appear after the dashboard is already actionable,
-        // including while the Create panel or editor is loading. Accept the suggested
-        // language by clicking "Continue" to dismiss it. Click FIRST (fast) so the
-        // intercepted action can proceed before any step times out.
+        // including while the Create panel or editor is loading. Dismiss it WITHOUT
+        // committing a language: clicking "Continue" commits the choice and triggers a
+        // full reload of new.express.adobe.com/, after which the prompt re-appears —
+        // an infinite navigation loop that starves later steps (the search textbox
+        // never stabilizes). "Cancel" (falling back to the "Close dialog" X) closes it
+        // in place with no reload. noWaitAfter stops Playwright blocking on a post-click
+        // navigation before continuing the intercepted action.
         await this.page.addLocatorHandler(languageHeading, async () => {
-            console.log('installDashboardInterruptionHandlers: "Choose your language" prompt detected — clicking Continue');
-            await this.page.getByRole('button', { name: 'Continue', exact: true }).click({ timeout: 10_000 });
-        });
+            console.log('installDashboardInterruptionHandlers: "Choose your language" prompt detected — dismissing via Cancel');
+            await this.dismissRegionalPrompt();
+        }, { noWaitAfter: true });
 
         // The "Let's Go" education survey ("Help us customize your experience.") can
         // still surface in the UI even after skipLetsGoViaAPI — sometimes LATE, e.g.
@@ -175,13 +179,37 @@ export class AdobePage {
 
         // The "Choose your country" regional prompt behaves like "Choose your language":
         // it can surface on the dashboard (e.g. before/while searching templates) and
-        // block later steps. Same pattern — trigger on the heading, accept by clicking
-        // "Continue". Persistent so it's dismissed whenever it appears during the run.
+        // block later steps. Same reload-loop hazard on "Continue", so dismiss it the
+        // same way — Cancel/X with no post-click navigation wait.
         const countryHeading = this.page.getByRole('heading', { name: 'Choose your country', exact: true });
         await this.page.addLocatorHandler(countryHeading, async () => {
-            console.log('installDashboardInterruptionHandlers: "Choose your country" prompt detected — clicking Continue');
-            await this.page.getByRole('button', { name: 'Continue', exact: true }).click({ timeout: 10_000 });
-        });
+            console.log('installDashboardInterruptionHandlers: "Choose your country" prompt detected — dismissing via Cancel');
+            await this.dismissRegionalPrompt();
+        }, { noWaitAfter: true });
+    }
+
+    /**
+     * Dismiss a regional ("Choose your language" / "Choose your country") prompt
+     * WITHOUT committing a selection. Committing via "Continue" reloads the dashboard
+     * and the prompt re-appears, so prefer "Cancel", falling back to the "Close dialog"
+     * X — both close the modal in place with no navigation.
+     *
+     * BEST-EFFORT: this runs inside a persistent locator handler, so it must NEVER
+     * throw. The modal is often already closing by the time we act (e.g. Cancel lands
+     * and detaches the node, or it auto-dismisses), which makes the click reject or the
+     * fallback button never appear. Any such failure means "already gone" = success, so
+     * every click is short-timeout and swallowed. If the modal genuinely persists, the
+     * locator handler simply re-fires on the next intercepted action.
+     */
+    private async dismissRegionalPrompt(): Promise<void> {
+        for (const name of ['Cancel', 'Close dialog']) {
+            try {
+                await this.page.getByRole('button', { name, exact: true }).click({ timeout: 2_000 });
+                return;
+            } catch {
+                // Button absent or modal already closing — try the next, else give up.
+            }
+        }
     }
 
     async isLetsGoIndicator_Visible(): Promise<boolean> {
@@ -371,11 +399,23 @@ export class AdobePage {
     // would close the dropdown; instead click the suggestion while it's open.
     async searchDashboardTemplate(templateName: string): Promise<void> {
         await expect(this.dashboardSearch).toBeVisible({timeout:30000});
-        await this.dashboardSearch.click({timeout:20000});
-        // Type with a per-keystroke delay: the type-ahead suggestion dropdown reacts to
-        // input events, so typing too fast can populate the field without the dropdown
-        // ever rendering. The delay lets suggestions catch up before we click one.
-        await this.dashboardSearch.pressSequentially(templateName, { delay: 150 });
+        // The regional "Choose your language"/"country" modal can appear LATE — while we
+        // type — and steal focus, so only the first keystroke lands (the field shows "P"
+        // instead of "Postcard"). The locator handler dismisses the modal, but the
+        // truncated input is never restored, so the suggestion never renders. Guard by
+        // typing, then asserting the field actually holds the full term; if a focus-steal
+        // truncated it, toPass retries the whole entry — by the retry the modal has been
+        // dismissed, so the retype sticks. Each click re-triggers the handler, so a modal
+        // present at retry time is cleared before we type again.
+        await expect(async () => {
+            await this.dashboardSearch.click({timeout:20000});
+            await this.dashboardSearch.fill('');
+            // Type with a per-keystroke delay: the type-ahead suggestion dropdown reacts to
+            // input events, so typing too fast can populate the field without the dropdown
+            // ever rendering. The delay lets suggestions catch up before we click one.
+            await this.dashboardSearch.pressSequentially(templateName, { delay: 150 });
+            await expect(this.dashboardSearch).toHaveValue(templateName, { timeout: 2000 });
+        }).toPass({ timeout: 30000 });
         // Wait for the suggestion to actually render before clicking it.
         const suggestion = this.page.getByText(templateName).first();
         await suggestion.waitFor({ state: 'visible', timeout: 15000 });
