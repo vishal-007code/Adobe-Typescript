@@ -5,9 +5,11 @@ import { GmailProvider } from "../../src/pages/gmailProvider";
 import { MsProvider} from "../../src/pages/msProvider";
 import { EditorDashboard } from '../../src/pages/editorDashboard';
 
-defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, testInfo) => {
+const FIXED_POSTCARD_URL = 'https://new.express.adobe.com/design/template/urn:aaid:sc:VA6C2:f2c97bf0-1039-5b0d-be7a-528c0060757b?category=text&entryPoint=template&taskID=postcard';
+
+defineAdobeAccountTests('script flow', async ({ page, context, account, stepTracker }, testInfo) => {
     const adobe = new AdobePage(page);
-    const editor = new EditorDashboard(page);
+    let editor: EditorDashboard;   // bound to the postcard tab once it opens
     const ms = new MsProvider(page);
     const ggl = new GmailProvider(page);
 
@@ -39,6 +41,14 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   stepTracker.setStep('Activate by Lets Go');
   await adobe.skipLetsGoViaAPI(account.email);
 
+  stepTracker.setStep('Navigate to Fixed Postcard');
+  // Settle buffer to let late dashboard content/interrupts render.
+  await page.waitForTimeout(120_000);
+  const postcardPage = await context.newPage();
+  await postcardPage.goto(FIXED_POSTCARD_URL, { waitUntil: 'load' });
+  editor = new EditorDashboard(postcardPage);   // rebind; original tab stays open
+
+
   // ── OLD flow (blank Square canvas → search inside editor) — replaced by v7's dashboard search ──
   // stepTracker.setStep('Setup Canvas');
   // await adobe.createTemplate();
@@ -50,12 +60,12 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   // stepTracker.setStep('Select Template');
   // await adobe.selectTemplate(keyword);
 
-  // ── NEW flow (from v7): search templates on the dashboard, click a random result ──
-  stepTracker.setStep('Search Template');
-  await adobe.searchDashboardTemplate('Postcard');
-
-  stepTracker.setStep('Select Template');
-  await adobe.selectRandomTemplate();
+  // // ── NEW flow (from v7): search templates on the dashboard, click a random result ──
+  // stepTracker.setStep('Search Template');
+  // await adobe.searchDashboardTemplate('Postcard');
+  //
+  // stepTracker.setStep('Select Template');
+  // await adobe.selectRandomTemplate();
 
   // The editor's tutorial/coachmark still appears after a template opens; skipTutorial
   // registers a persistent "Skip tour" handler that also protects the Share click.
