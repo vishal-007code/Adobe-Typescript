@@ -139,6 +139,8 @@ export class AdobePage {
         } catch (e) {
             console.log('waitForDashboard: page load did not fully settle on Load', e);
         }
+
+
     }
 
     private async installDashboardInterruptionHandlers(): Promise<void> {
