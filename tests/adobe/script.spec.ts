@@ -5,9 +5,11 @@ import { GmailProvider } from "../../src/pages/gmailProvider";
 import { MsProvider} from "../../src/pages/msProvider";
 import { EditorDashboard } from '../../src/pages/editorDashboard';
 
-defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, testInfo) => {
+const FIXED_POSTCARD_URL = 'https://new.express.adobe.com/design/template/urn:aaid:sc:VA6C2:f2c97bf0-1039-5b0d-be7a-528c0060757b?category=text&entryPoint=template&taskID=postcard';
+
+defineAdobeAccountTests('script flow', async ({ page, context, account, stepTracker }, testInfo) => {
     const adobe = new AdobePage(page);
-    const editor = new EditorDashboard(page);
+    let editor: EditorDashboard;   // bound to the postcard tab once it opens
     const ms = new MsProvider(page);
     const ggl = new GmailProvider(page);
 
@@ -40,7 +42,7 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   await adobe.skipLetsGoViaAPI(account.email);
 
   // Bulk "login till Let's Go" mode: stop right after the Let's Go step, skipping
-  // the dashboard dwell + template + share-link flow. run-batches.sh sets
+  // the dashboard dwell + postcard + share-link flow. run-batches.sh sets
   // ADOBE_STOP_AFTER_LETS_GO=1 for the large login-only production run so each
   // account finishes in ~login time instead of ~6 min. Unset (or !=1) runs the
   // full flow (local/full runs) unchanged.
@@ -53,18 +55,36 @@ defineAdobeAccountTests('script flow', async ({ page, account, stepTracker }, te
   stepTracker.setStep('Dwell on dashboard (3-4 min)');
   await adobe.dwellOnDashboard();
 
-  stepTracker.setStep('Setup Canvas');
-  await adobe.createTemplate();
+  stepTracker.setStep('Navigate to Fixed Postcard');
+  // Settle buffer to let late dashboard content/interrupts render.
+  await page.waitForTimeout(120_000);
+  const postcardPage = await context.newPage();
+  await postcardPage.goto(FIXED_POSTCARD_URL, { waitUntil: 'load' });
+  editor = new EditorDashboard(postcardPage);   // rebind; original tab stays open
 
+
+  // ── OLD flow (blank Square canvas → search inside editor) — replaced by v7's dashboard search ──
+  // stepTracker.setStep('Setup Canvas');
+  // await adobe.createTemplate();
+
+  // stepTracker.setStep('Search Template');
+  // const keyword: string = adobe.getRandomSearchKeyword()
+  // await adobe.searchForTemplate(keyword);
+
+  // stepTracker.setStep('Select Template');
+  // await adobe.selectTemplate(keyword);
+
+  // // ── NEW flow (from v7): search templates on the dashboard, click a random result ──
+  // stepTracker.setStep('Search Template');
+  // await adobe.searchDashboardTemplate('Postcard');
+  //
+  // stepTracker.setStep('Select Template');
+  // await adobe.selectRandomTemplate();
+
+  // The editor's tutorial/coachmark still appears after a template opens; skipTutorial
+  // registers a persistent "Skip tour" handler that also protects the Share click.
   stepTracker.setStep('Skip Tutorial dialog if visible');
   await editor.skipTutorial();
-
-  stepTracker.setStep('Search Template');
-  const keyword: string = adobe.getRandomSearchKeyword()
-  await adobe.searchForTemplate(keyword);
-
-  stepTracker.setStep('Select Template');
-  await adobe.selectTemplate(keyword);
 
   // stepTracker.setStep('Redirect to edit');
   // await adobe.shortcut();
