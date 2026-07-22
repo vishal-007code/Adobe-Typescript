@@ -53,7 +53,9 @@ SAVE_ARTIFACTS="${SAVE_ARTIFACTS:-false}"
 TASK_TIMEOUT="${TASK_TIMEOUT:-8h}"
 BASE_JOB_NAME="${BASE_JOB_NAME:-adobe-login-flow}"
 
-RUN_ID="$(date +%Y%m%d%H%M%S)"
+# Overridable so two regions launched at the same second get distinct GCS object
+# paths (accounts/${RUN_ID}/...) and report prefixes. Defaults to a timestamp.
+RUN_ID="${RUN_ID:-$(date +%Y%m%d%H%M%S)}"
 BATCH_DIR="tmp/batches-${RUN_ID}"
 LOG_DIR="tmp/batch-logs-${RUN_ID}"
 

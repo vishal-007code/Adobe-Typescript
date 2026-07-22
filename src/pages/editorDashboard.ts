@@ -6,6 +6,7 @@ export class EditorDashboard {
     readonly skipTutorial_btn: Locator;
     readonly navSharebtn: Locator;
     readonly viewOnlyLink: Locator;
+    readonly publishTab: Locator;
     readonly createLinkBtn: Locator;
     readonly copyLinkBtn: Locator;
     readonly publishUrl: Locator;
@@ -16,6 +17,10 @@ export class EditorDashboard {
         this.skipTutorial_btn = page.getByText('Skip tour');
         this.navSharebtn = page.locator('#share-btn');
         this.viewOnlyLink = page.getByRole('menuitem', { name: 'View-only link' });
+        // New "Share file" panel: Share/Publish tabs. The "Publish" tab hosts the
+        // "Create link" (publishedV2) flow that the classic "View-only link"
+        // menuitem used to open.
+        this.publishTab = page.getByRole('tab', { name: 'Publish' });
         this.createLinkBtn = page.getByText('Create link').first();
         this.copyLinkBtn = page.getByRole('button', { name: 'Copy link' });
         this.publishUrl = page.locator('a[href^="https://new.express.adobe.com/publishedV2/"]').first();
@@ -60,15 +65,31 @@ export class EditorDashboard {
 
     async openViewOnlyLink(): Promise<void> {
         // After clicking Share, Adobe shows "We're working on your file…" while it
-        // prepares the doc; the share options (incl. "View-only link") only appear
-        // once that completes. The prep message renders a beat AFTER the Share click,
-        // so waiting on it races its delayed render. Instead wait directly for the
-        // end state — the View-only link menuitem — with a timeout generous enough
-        // to cover file prep. Some accounts' files prep slowly (>120s), so allow 180s;
-        // this still fits the 360s per-test budget alongside the downstream link steps.
-        await expect(this.viewOnlyLink).toBeEnabled({ timeout: 180_000 });
-        await this.viewOnlyLink.click({ timeout: 20000 });
-        await expect(this.createLinkBtn).toBeVisible({ timeout: 30000 });
+        // prepares the doc; the share options only appear once that completes.
+        //
+        // Two share-panel variants exist:
+        //   • Classic:  a "View-only link" menuitem → click it to reveal "Create link".
+        //   • New "Share file" panel: Share/Publish tabs, where the "Publish" tab hosts
+        //     the same "Create link" (publishedV2) flow.
+        //
+        // Wait directly for whichever entry point this account gets (rather than racing
+        // the delayed prep message). File prep can exceed 120s, so allow 180s; this
+        // still fits the 360s per-test budget alongside the downstream link steps.
+        const entryPoint = this.viewOnlyLink.or(this.publishTab).first();
+        await expect(entryPoint).toBeVisible({ timeout: 180_000 });
+
+        if (await this.viewOnlyLink.isVisible().catch(() => false)) {
+            // Classic panel.
+            await this.viewOnlyLink.click({ timeout: 20000 });
+        } else {
+            // New "Share file" panel — the Publish tab exposes the Create link flow.
+            await this.publishTab.click({ timeout: 20000 });
+        }
+
+        // "Create link" becomes available once the document finishes preparing. In the
+        // new Publish panel that prep can land here (the tab itself renders immediately),
+        // so keep a generous wait rather than the classic short one.
+        await expect(this.createLinkBtn).toBeVisible({ timeout: 180_000 });
     }
 
     async clickCreateLink(): Promise<void> {
