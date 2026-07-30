@@ -61,6 +61,10 @@ HEADER="Email,Password"
 
 log() { echo "[INDIA-2R][$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 
+# Count non-empty data rows in a CSV (header excluded; tolerant of CRLF and a
+# missing trailing newline) — same robust method as run-batches.sh.
+count_rows() { tail -n +2 "$1" | sed 's/\r$//' | grep -c '[^[:space:]]' || true; }
+
 for f in "$CSV_A" "$CSV_B"; do
   [[ -f "$f" ]] || { echo "ERROR: input CSV not found: $f"; exit 1; }
 done
@@ -73,7 +77,7 @@ done
     | awk -F',' 'NF>=2 { key=tolower($1); gsub(/^[ \t]+|[ \t]+$/,"",key); if (key != "" && !seen[key]++) print }'
 } > "$MASTER"
 
-DATA_ROWS=$(( $(wc -l < "$MASTER") - 1 ))
+DATA_ROWS=$(count_rows "$MASTER")
 [[ "$DATA_ROWS" -gt 0 ]] || { echo "ERROR: merged master has no data rows"; exit 1; }
 HALF=$(( (DATA_ROWS + 1) / 2 ))
 
@@ -81,8 +85,8 @@ HALF=$(( (DATA_ROWS + 1) / 2 ))
 { echo "$HEADER"; tail -n +2 "$MASTER" | head -n "$HALF"; }            > "$HALF1"
 { echo "$HEADER"; tail -n +2 "$MASTER" | tail -n +"$((HALF + 1))"; }   > "$HALF2"
 
-S1_ROWS=$(( $(wc -l < "$HALF1") - 1 ))
-S2_ROWS=$(( $(wc -l < "$HALF2") - 1 ))
+S1_ROWS=$(count_rows "$HALF1")
+S2_ROWS=$(count_rows "$HALF2")
 
 log "============================================================"
 log "India two-region login run"
@@ -103,7 +107,7 @@ run_region() {
   PROJECT_ID="$PROJECT_ID" \
   REGION="$region" \
   INPUT_CSV="$input" \
-  TOTAL_ACCOUNTS="$(( $(wc -l < "$input") - 1 ))" \
+  TOTAL_ACCOUNTS="$(count_rows "$input")" \
   BATCH_SIZE="100000000" \
   BASE_JOB_NAME="$jobbase" \
   bash scripts/run-batches.sh
