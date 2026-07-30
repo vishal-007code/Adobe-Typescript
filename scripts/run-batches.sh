@@ -22,11 +22,14 @@ ACCOUNTS_BUCKET="${ACCOUNTS_BUCKET:-${PROJECT_ID}-adobe-accounts}"
 REPORTS_BUCKET="${REPORTS_BUCKET:-${ACCOUNTS_BUCKET}}"
 
 INPUT_CSV="${INPUT_CSV:-accounts.csv}"
-TOTAL_ACCOUNTS="${TOTAL_ACCOUNTS:-30300}"
+# Empty by default -> auto-detected from INPUT_CSV's row count below, so you can
+# upload any accounts.csv (any size) and run without passing a number.
+TOTAL_ACCOUNTS="${TOTAL_ACCOUNTS:-}"
 # One job by default (BATCH_SIZE >= TOTAL_ACCOUNTS). The asia-south1 quota is small
 # (20 vCPU / 40 GiB total per region), so launching several jobs in parallel just
 # fights that shared cap at runtime. A single job uses the quota cleanly.
-BATCH_SIZE="${BATCH_SIZE:-30300}"
+# Empty by default -> set to TOTAL_ACCOUNTS below (one job covering all accounts).
+BATCH_SIZE="${BATCH_SIZE:-}"
 
 CPU="${CPU:-2}"
 MEMORY="${MEMORY:-4Gi}"
@@ -62,6 +65,25 @@ LOG_DIR="tmp/batch-logs-${RUN_ID}"
 mkdir -p "$BATCH_DIR" "$LOG_DIR"
 
 log() { echo "[BATCHES][$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
+
+# ── Auto-detect account count ─────────────────────────────────────────────────
+# Upload any accounts.csv and run — no need to pass TOTAL_ACCOUNTS. When it isn't
+# set, count the non-empty data rows in INPUT_CSV (excludes the header; tolerant
+# of CRLF endings and a missing trailing newline). BATCH_SIZE then defaults to
+# the full count so the whole list runs as ONE Cloud Run job.
+if [[ ! -f "$INPUT_CSV" ]]; then
+  echo "ERROR: input CSV not found: $INPUT_CSV"
+  exit 1
+fi
+if [[ -z "${TOTAL_ACCOUNTS}" ]]; then
+  TOTAL_ACCOUNTS=$(tail -n +2 "$INPUT_CSV" | sed 's/\r$//' | grep -c '[^[:space:]]' || true)
+  log "Auto-detected TOTAL_ACCOUNTS=${TOTAL_ACCOUNTS} from ${INPUT_CSV}"
+fi
+if [[ "${TOTAL_ACCOUNTS:-0}" -le 0 ]]; then
+  echo "ERROR: ${INPUT_CSV} has no account rows (after the header)."
+  exit 1
+fi
+BATCH_SIZE="${BATCH_SIZE:-$TOTAL_ACCOUNTS}"
 
 # ── Pre-flight: Cloud Run CPU quota check (set CHECK_QUOTA=1 to enable) ────────
 # This run needs ~(num batches x PARALLELISM x WORKERS x CPU) CPUs concurrently
