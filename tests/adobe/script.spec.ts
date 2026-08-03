@@ -1,11 +1,20 @@
 import { defineAdobeAccountTests, expect } from '../../src/adobe/spec';
-import { ADOBE_LINK_ATTACHMENT } from '../../src/adobe/runtime';
+import { ADOBE_LINK_ATTACHMENT, ADOBE_LOGIN_ATTACHMENT } from '../../src/adobe/runtime';
 import { AdobePage } from "../../src/pages/adobe";
 import { GmailProvider } from "../../src/pages/gmailProvider";
 import { MsProvider} from "../../src/pages/msProvider";
 import { EditorDashboard } from '../../src/pages/editorDashboard';
 
 const FIXED_POSTCARD_URL = 'https://new.express.adobe.com/design/template/urn:aaid:sc:VA6C2:f2c97bf0-1039-5b0d-be7a-528c0060757b?category=text&entryPoint=template&taskID=postcard';
+
+/** Host of an identity-provider URL, for use in step names and logs (no query tokens). */
+function providerHost(providerUrl: string): string {
+  try {
+    return new URL(providerUrl).host;
+  } catch {
+    return providerUrl.slice(0, 60);
+  }
+}
 
 defineAdobeAccountTests('script flow', async ({ page, context, account, stepTracker }, testInfo) => {
     const adobe = new AdobePage(page);
@@ -28,7 +37,12 @@ defineAdobeAccountTests('script flow', async ({ page, context, account, stepTrac
   stepTracker.setStep('check email provider');
   const provider  =  await adobe.getLoginProvider();
 
-  stepTracker.setStep('Login with'+ provider);
+  // provider is a full OAuth URL. Use only its host in the step name: the raw URL
+  // carries `state`/`part`/`rart` tokens, and the step name is echoed into the
+  // results CSV and the [ADOBE_RESULT] log line — so the full URL both leaked
+  // those tokens into logs and added ~1.5 KB per failure, which also made failure
+  // grouping useless (every URL is unique).
+  stepTracker.setStep('Login with ' + providerHost(provider));
   if(provider.includes('accounts.google.com')){
         await ggl.g_login(account.email,account.password);
   } else if (provider.includes('login.microsoftonline.com')){
@@ -36,10 +50,28 @@ defineAdobeAccountTests('script flow', async ({ page, context, account, stepTrac
   }
 
   stepTracker.setStep('Wait for Adobe Dashboard');
-  await adobe.waitForDashboard();
+  // Passing the email makes waitForDashboard emit the [ADOBE_LOGIN_OK] /
+  // [ADOBE_LOGIN_FAIL] proof marker for this account.
+  await adobe.waitForDashboard(account.email);
 
   stepTracker.setStep('Activate by Lets Go');
   await adobe.skipLetsGoViaAPI(account.email);
+
+  // Attach login proof so the reporter can count logins independently of the
+  // test's own pass/fail, and so it lands in the results CSV.
+  const loginEvidence = adobe.getLoginEvidence();
+  if (loginEvidence) {
+    await testInfo.attach(ADOBE_LOGIN_ATTACHMENT, {
+      body: Buffer.from(JSON.stringify(loginEvidence), 'utf8'),
+      contentType: 'application/json',
+    });
+  }
+
+  // Short dwell after Let's Go. Uses the page-independent timer in
+  // dwellOnDashboard (NOT page.waitForTimeout): the page isn't reliably alive
+  // right after Let's Go, so a page-bound wait throws "Target page ... closed".
+  stepTracker.setStep('Wait 30s after Lets Go');
+  await adobe.dwellOnDashboard(30_000);
 
   // Bulk "login till Let's Go" mode: stop right after the Let's Go step, skipping
   // the dashboard dwell + postcard + share-link flow. run-batches.sh sets
@@ -51,11 +83,7 @@ defineAdobeAccountTests('script flow', async ({ page, context, account, stepTrac
     return;
   }
 
-  // Short dwell after Let's Go. Uses the page-independent timer in
-  // dwellOnDashboard (NOT page.waitForTimeout): the page isn't reliably alive
-  // right after Let's Go, so a page-bound wait throws "Target page ... closed".
-  stepTracker.setStep('Wait 30s after Lets Go');
-  await adobe.dwellOnDashboard(30_000);
+  
 
   // // Dwell on the dashboard for ~3-4 min once the Let's Go process is done.
   // stepTracker.setStep('Dwell on dashboard (3-4 min)');

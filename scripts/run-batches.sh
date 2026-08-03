@@ -13,6 +13,12 @@
 #   bash scripts/run-batches.sh
 set -euo pipefail
 
+# Pick up GOOGLE_CHAT_WEBHOOK_URL (and anything else local) without baking secrets
+# into the repo. .env.local is git-ignored; skipped silently when absent.
+if [[ -f .env.local ]]; then
+  set -a; . ./.env.local; set +a
+fi
+
 : "${IMAGE_URI:?IMAGE_URI is required. Run scripts/setup-run.sh first and copy the printed IMAGE_URI.}"
 
 PROJECT_ID="${PROJECT_ID:-project-517cd71a-7c2f-4e1b-af2}"
@@ -65,6 +71,19 @@ LOG_DIR="tmp/batch-logs-${RUN_ID}"
 mkdir -p "$BATCH_DIR" "$LOG_DIR"
 
 log() { echo "[BATCHES][$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
+
+# Push a Chat message. Best-effort: a webhook hiccup must NEVER abort a multi-day
+# run, and a missing webhook is simply a no-op (the sender exits 0 when unset).
+# Per BATCH only — never per task or per account; ~4k tasks would hit the Chat
+# rate limit. Aggregate progress comes from scripts/notify-progress.sh.
+GOOGLE_CHAT_THREAD_KEY="${GOOGLE_CHAT_THREAD_KEY:-adobe-run-${RUN_ID:-$(date -u +%Y%m%d)}}"
+notify() {
+  [[ -n "${GOOGLE_CHAT_WEBHOOK_URL:-}" ]] || return 0
+  GOOGLE_CHAT_WEBHOOK_URL="$GOOGLE_CHAT_WEBHOOK_URL" \
+  GOOGLE_CHAT_MESSAGE="$1" \
+  GOOGLE_CHAT_THREAD_KEY="$GOOGLE_CHAT_THREAD_KEY" \
+  node scripts/send-google-chat-update.mjs >/dev/null 2>&1 || true
+}
 
 # ── Auto-detect account count ─────────────────────────────────────────────────
 # Upload any accounts.csv and run — no need to pass TOTAL_ACCOUNTS. When it isn't
@@ -122,6 +141,11 @@ log "Acct limit:    ${ADOBE_SCRIPT_ACCOUNT_LIMIT}"
 log "Stop after login: ${ADOBE_STOP_AFTER_LOGIN}"
 log "Save to GCS:   ${SAVE_ARTIFACTS} (false = logs only, no bucket uploads)"
 log "============================================================"
+
+notify "🚀 *Adobe run started* — ${REGION}
+📊 ${TOTAL_ACCOUNTS} accounts | batch size ${BATCH_SIZE}
+⚙️ parallelism ${PARALLELISM} × ${ADOBE_PLAYWRIGHT_WORKERS} workers = ~$(( PARALLELISM * ADOBE_PLAYWRIGHT_WORKERS )) in flight
+🆔 run ${RUN_ID}"
 
 # ── Split CSV into batches ────────────────────────────────────────────────────
 log "Splitting CSV into batches..."
@@ -192,13 +216,27 @@ ADOBE_VIDEO_MODE=${ADOBE_VIDEO_MODE},\
 ADOBE_DEBUG_ARTIFACTS=${ADOBE_DEBUG_ARTIFACTS},\
 SAVE_ARTIFACTS=${SAVE_ARTIFACTS}"
 
+    notify "▶️ *${batch_label} launched* — ${REGION}
+📊 ${batch_rows} accounts across ${tasks} tasks
+🆔 job ${job_name}"
+
     step "Executing ${job_name} (waiting for completion)..."
-    gcloud run jobs execute "${job_name}" \
+    started_at=$(date -u +%s)
+    if gcloud run jobs execute "${job_name}" \
       --region="${REGION}" \
       --project="${PROJECT_ID}" \
       --wait
-
-    step "Done."
+    then
+      notify "✅ *${batch_label} finished* — ${REGION}
+📊 ${batch_rows} accounts | took $(( ($(date -u +%s) - started_at) / 60 ))m
+Run \`MODE=summary bash scripts/count-logins.sh\` for the login tally."
+      step "Done."
+    else
+      notify "❌ *${batch_label} FAILED* — ${REGION}
+🆔 job ${job_name} — check ${LOG_DIR}/${batch_label}.log"
+      step "FAILED."
+      exit 1
+    fi
   ) > "$LOG_DIR/${batch_label}.log" 2>&1 &
 
   pids+=("$!")
@@ -228,6 +266,9 @@ log "Logs:       $LOG_DIR"
 log "Batch CSVs: $BATCH_DIR"
 
 if [[ "$failed" -ne 0 ]]; then
+  notify "⚠️ *Adobe run finished with failures* — ${REGION}
+🆔 run ${RUN_ID} — ${#BATCH_FILES[@]} batch(es), at least one failed.
+Logs: ${LOG_DIR}"
   echo
   echo "One or more batches failed. Debug:"
   for i in $(seq 1 "${#BATCH_FILES[@]}"); do
@@ -235,5 +276,10 @@ if [[ "$failed" -ne 0 ]]; then
   done
   exit 1
 fi
+
+notify "🏁 *Adobe run complete* — ${REGION}
+📊 ${TOTAL_ACCOUNTS} accounts across ${#BATCH_FILES[@]} batch(es)
+🆔 run ${RUN_ID}
+Login tally: \`MODE=summary bash scripts/count-logins.sh\`"
 
 log "All batches completed successfully."
