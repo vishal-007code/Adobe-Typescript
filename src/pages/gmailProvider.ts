@@ -26,9 +26,45 @@ export class GmailProvider {
     }
 
     async g_password_field( password : string ): Promise<void> {
-        await this.password_field.fill(password);
+        try {
+            await this.password_field.fill(password);
+        } catch (e) {
+            // The password screen never rendered. Capture what Google DID serve so a
+            // cloud run is diagnosable from Cloud Logging alone — screenshots require
+            // SAVE_ARTIFACTS=true plus a GCS round-trip, and the bare timeout message
+            // ("waiting for getByLabel('Enter your password')") says nothing about the
+            // cause: a captcha, "this browser may not be secure", "couldn't find your
+            // account" and an IP block all look identical from the outside.
+            //
+            // Diagnostics must never mask the real failure, so this rethrows.
+            await this.logUnexpectedPage();
+            throw e;
+        }
         await this.page.waitForTimeout(1000);
         await this.password_field.press("Enter");
+    }
+
+    /**
+     * Log the current page's identity when an expected Google screen is missing.
+     * Runs only on the failure path, so it adds nothing to a successful login and
+     * changes no existing timeout. Query strings are stripped because Google's SSO
+     * URLs carry OAuth tokens.
+     */
+    private async logUnexpectedPage(): Promise<void> {
+        try {
+            const url = this.page.url().split('?')[0];
+            const title = (await this.page.title().catch(() => '')).replace(/"/g, "'");
+            const body = (await this.page.locator('body')
+                .innerText({ timeout: 5000 })
+                .catch(() => ''))
+                .replace(/\s+/g, ' ')
+                .replace(/"/g, "'")
+                .trim()
+                .slice(0, 400);
+            console.log(`[ADOBE_GOOGLE_UNEXPECTED_PAGE] url=${url} title="${title}" body="${body}"`);
+        } catch {
+            console.log('[ADOBE_GOOGLE_UNEXPECTED_PAGE] page state unreadable');
+        }
     }
 
     async click_g_iUnderstand(): Promise<void> {

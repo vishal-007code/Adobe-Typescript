@@ -35,7 +35,22 @@ export default defineConfig({
     trace: 'off',
     screenshot: 'only-on-failure',
     headless: true,
-    // Linux/Cloud Run compatible args — no GPU, no D3D11 (Windows-only)
+    // channel:'chromium' runs the FULL Chromium in new-headless mode instead of
+    // Playwright's default lightweight "headless shell".
+    //
+    // This matters because Google's SSO automation detection flags the shell far
+    // more readily: on Cloud Run every account died waiting for the password field
+    // ("locator.fill: Timeout 120000ms exceeded ... getByLabel('Enter your
+    // password')") at a ~17% success rate, while the same code and accounts hit 86%
+    // locally — where playwright.config.ts deliberately sets channel:'chromium' and
+    // its own comment notes the shell "triggers banner". Sequential single-browser
+    // runs failed identically, so it was never rate-limiting.
+    //
+    // Requires `npx playwright install chromium` in the Dockerfile, which supplies
+    // the full build alongside the shell.
+    channel: 'chromium',
+    // Linux/Cloud Run compatible args — no GPU, no D3D11 (Windows-only).
+    // --no-sandbox is required because the container runs as root.
     launchOptions: {
       args: [
         '--no-sandbox',
