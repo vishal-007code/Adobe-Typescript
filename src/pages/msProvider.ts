@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { logUnexpectedPage } from "./diagnostics";
 
 export class MsProvider {
     readonly page: Page;
@@ -24,7 +25,17 @@ export class MsProvider {
     }
 
     async ms_password_field( password : string ): Promise<void> {
-        await this.password_field.waitFor({ state: 'visible', timeout: 15000 })
+        try {
+            await this.password_field.waitFor({ state: 'visible', timeout: 15000 })
+        } catch (e) {
+            // Microsoft's password screen never rendered. Same reasoning as the Google
+            // path: the bare timeout names the element we wanted, not the interstitial
+            // we actually got (a challenge, a tenant/conditional-access block, or an
+            // unknown-account page). Bihar ICT accounts are ~31% of a full run, so this
+            // path must be diagnosable from Cloud Logging without a rebuild.
+            await logUnexpectedPage(this.page, 'ADOBE_MS_UNEXPECTED_PAGE');
+            throw e;
+        }
         await this.password_field.fill(password);
         await this.page.waitForTimeout(500);
         await this.password_field.press("Enter");
