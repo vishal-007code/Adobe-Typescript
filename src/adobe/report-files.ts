@@ -24,14 +24,22 @@ export function appendConsumedFragment(row: AdobeConsumedRow, location: Fragment
 
 export function appendResultFragment(row: AdobeResultRow, location: FragmentLocation): void {
   const filePath = path.join(getAdobeTmpDir(location.runId, location.cwd), `results-worker-${location.workerIndex}.csv`);
-  appendCsvRow(filePath, ADOBE_RESULTS_HEADERS, [
+  appendCsvRow(filePath, ADOBE_RESULTS_HEADERS, toResultValues(row));
+}
+
+function toResultValues(row: AdobeResultRow): string[] {
+  return [
     row.timestamp,
     row.email,
     row.test_status,
+    row.logged_in ?? '',
+    row.dashboard_url ?? '',
+    row.owner_entity ?? '',
     row.failed_at_step,
     row.failure_reason,
     row.duration_ms,
-  ]);
+    row.published_link ?? '',
+  ];
 }
 
 export function mergeAdobeRunArtifacts(options: {
@@ -52,14 +60,7 @@ export function mergeAdobeRunArtifacts(options: {
   writeCsvFile(
     resultsPath,
     ADOBE_RESULTS_HEADERS,
-    resultsRows.map((row) => [
-      row.timestamp,
-      row.email,
-      row.test_status,
-      row.failed_at_step,
-      row.failure_reason,
-      row.duration_ms,
-    ]),
+    resultsRows.map(toResultValues),
   );
 
   const consumedLedgerPath = getAdobeConsumedLedgerPath(cwd);

@@ -26,9 +26,11 @@ const emailOfRow = (row) => normalize((row.split(',')[0] ?? ''));
 
 // ── Parse result markers from the logs ────────────────────────────────────────
 const logText = fs.readFileSync(logsPath, 'utf8');
-const markerRe = /\[ADOBE_RESULT\]\s+status=(\w+)\s+email=(\S+)/g;
+// logged_in is optional so this still parses markers from runs predating it.
+const markerRe = /\[ADOBE_RESULT\]\s+status=(\w+)\s+email=(\S+)(?:\s+logged_in=(yes|no))?/g;
 
 const passed = new Set();
+const loggedIn = new Set();
 const statusCounts = { passed: 0, failed: 0, skipped: 0 };
 let match;
 while ((match = markerRe.exec(logText)) !== null) {
@@ -36,6 +38,7 @@ while ((match = markerRe.exec(logText)) !== null) {
   const email = normalize(match[2]);
   if (status in statusCounts) statusCounts[status] += 1;
   if (status === 'passed') passed.add(email);
+  if (match[3] === 'yes') loggedIn.add(email);
 }
 
 // ── Diff against the input CSV ────────────────────────────────────────────────
@@ -55,7 +58,15 @@ fs.writeFileSync(outputPath, [header, ...remaining].join('\n') + '\n', 'utf8');
 console.log('──────────────────────────────────────────────');
 console.log(`Input accounts:        ${dataRows.length}`);
 console.log(`Passed (from logs):    ${passed.size}`);
+console.log(`LOGGED IN (from logs): ${loggedIn.size}`);
 console.log(`  result markers seen: passed=${statusCounts.passed} failed=${statusCounts.failed} skipped=${statusCounts.skipped}`);
+// An account can log in and still fail a later step, so this is usually > 0 and
+// means those accounts are ACTIVATED even though they land in the resume CSV.
+const loggedInButNotPassed = [...loggedIn].filter((email) => !passed.has(email)).length;
+if (loggedInButNotPassed > 0) {
+  console.log(`  NOTE: ${loggedInButNotPassed} account(s) logged in but the test failed later —`);
+  console.log(`        they ARE logged in; re-running them repeats a login that already worked.`);
+}
 console.log(`Remaining to retry:    ${remaining.length}  →  ${outputPath}`);
 console.log('──────────────────────────────────────────────');
 if (passed.size === 0) {

@@ -123,6 +123,40 @@ gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SERVICE_ACCOUNT}" 
   --member="serviceAccount:service-${PROJECT_NUMBER}@serverless-robot-prod.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser" >/dev/null || true
 
+# ── Cloud Build service account permissions ──────────────────────────────────
+# Projects created recently no longer get the legacy
+# ${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com account, and Cloud Build falls
+# back to the Compute Engine default SA — which in a new project has NO roles,
+# because Google stopped auto-granting it Editor. The build then dies confusingly
+# on its OWN staging bucket:
+#
+#   INVALID_ARGUMENT: could not resolve source: Error 403:
+#   <n>-compute@developer.gserviceaccount.com does not have storage.objects.get
+#   access to .../<project>_cloudbuild/objects/source/....tgz
+#
+# Grant the three roles the build actually needs: read the uploaded source and
+# write artifacts, push the image, and emit build logs. Prefer the legacy SA when
+# it exists so older projects keep their existing setup.
+if gcloud iam service-accounts describe \
+     "${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+     --project="${PROJECT_ID}" >/dev/null 2>&1; then
+  BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+else
+  BUILD_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+fi
+log "Granting Cloud Build permissions to ${BUILD_SA}..."
+for role in roles/storage.objectAdmin roles/artifactregistry.writer roles/logging.logWriter; do
+  retry_iam gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${BUILD_SA}" \
+    --role="${role}" \
+    --condition=None || log "  WARN: could not grant ${role} (may already be present)"
+done
+
+# IAM propagation can lag the build submit by a few seconds; a fresh grant that
+# has not landed yet produces exactly the 403 above.
+log "Waiting 15s for IAM propagation before building..."
+sleep 15
+
 # ── Docker image build ────────────────────────────────────────────────────────
 log "Building Docker image: ${IMAGE_URI}"
 gcloud builds submit \

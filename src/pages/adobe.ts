@@ -1,6 +1,30 @@
 import fs from 'node:fs';
 import {expect, Locator, Page} from "@playwright/test";
 
+/**
+ * Compress a thrown error into one short, log-safe line.
+ *
+ * Playwright appends a "===== logs =====" block listing every URL it navigated
+ * through. For SSO failures those URLs carry OAuth/SAML tokens (`state`, `part`,
+ * `rart`, `SAMLRequest`), so emitting the raw message both leaks credentials into
+ * Cloud Logging and adds ~1.5 KB per failure. Cutting at the separator keeps the
+ * diagnostic first line and drops the rest.
+ */
+export function cleanReason(error: unknown): string {
+    return String(error)
+        .split(/={5,}/)[0]
+        // Playwright colourizes its call log, so raw messages carry ANSI escapes
+        // that would otherwise land in the CSV and in Cloud Logging. Strip the full
+        // ESC-prefixed sequence, then any bare "[2m" whose ESC was already lost.
+        .replace(/\[[0-9;]*m/g, '')
+        .replace(/\[[0-9;]*m/g, '')
+        .replace(/https?:\/\/\S+/g, (url) => url.split('?')[0])
+        .replace(/\s+/g, ' ')
+        .replace(/"/g, "'")
+        .trim()
+        .slice(0, 200);
+}
+
 export class AdobePage {
 
     readonly page: Page;
@@ -28,6 +52,9 @@ export class AdobePage {
     private capturedOwnerEntity = '';
     private udsCapturing = false;
     private dashboardHandlersInstalled = false;
+
+    // Login proof, surfaced to the reporter via the adobe-login attachment.
+    private loginEvidence: { ok: boolean; url: string; at: string } | undefined;
 
 
     private randomSearchKeywords : string[];
@@ -123,13 +150,42 @@ export class AdobePage {
         return await handle.jsonValue() as string;
     }
 
-    async waitForDashboard(): Promise<void> {
+    /**
+     * Wait for the post-SSO Adobe dashboard. Reaching new.express.adobe.com is the
+     * point at which the account is authenticated, so this is where login proof is
+     * emitted.
+     *
+     * Pass loginAccount to get a greppable per-account marker on stdout:
+     *   [ADOBE_LOGIN_OK]   email=... url=... elapsed_ms=... at=...
+     *   [ADOBE_LOGIN_FAIL] email=... elapsed_ms=... reason="..."
+     *
+     * These survive in the Cloud Run logs even when SAVE_ARTIFACTS=false, and are
+     * emitted the MOMENT the dashboard is confirmed — before the interruption
+     * handlers and load-state wait — so a later hiccup (Let's Go, dwell, template
+     * flow) can never erase the evidence that login itself succeeded. That is the
+     * difference from [ADOBE_RESULT], which reports the whole test's outcome.
+     */
+    async waitForDashboard(loginAccount?: string): Promise<void> {
+        const startedAt = Date.now();
+        let dashboardUrl = '';
         try {
             await this.page.waitForURL(/new.express.adobe.com/, { timeout: 120_000 });
             await expect(this.page).toHaveURL(/.*new\.express\.adobe\.com/);
+            dashboardUrl = this.page.url();
         } catch (e) {
+            if (loginAccount) {
+                console.log(`[ADOBE_LOGIN_FAIL] email=${loginAccount} elapsed_ms=${Date.now() - startedAt} reason="${cleanReason(e)}"`);
+            }
             throw new Error(`Failed to navigate to Adobe Dashboard (new.express.adobe.com). Login likely failed. Original error: ${e}`);
         }
+
+        if (loginAccount) {
+            console.log(
+                `[ADOBE_LOGIN_OK] email=${loginAccount} url=${dashboardUrl}` +
+                ` elapsed_ms=${Date.now() - startedAt} at=${new Date().toISOString()}`,
+            );
+        }
+        this.loginEvidence = { ok: true, url: dashboardUrl, at: new Date().toISOString() };
 
         await this.installDashboardInterruptionHandlers();
 
@@ -254,11 +310,26 @@ export class AdobePage {
         try{
             await this.letsGo_btn.waitFor({ state: 'visible',timeout:20000});
             await this.letsGo_btn.click({ timeout: 5000});
-            console.log("--------------------------- Lets Go --------------------------------",{loginAccount});
+            console.log(`[ADOBE_LETSGO_OK] email=${loginAccount} via=ui`);
         }catch (e) {
-            console.log("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx SKIPPED LET'S GO xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",{loginAccount});
+            console.log(`[ADOBE_LETSGO_SKIPPED] email=${loginAccount} reason="dialog never became visible"`);
         }
 
+    }
+
+    /**
+     * Login proof for the current account, for attaching to the test result.
+     *
+     * ownerEntity is Adobe's own server-side identifier for the signed-in user,
+     * scraped from the authenticated UDS traffic. It is the strongest evidence we
+     * have that a real authenticated session existed — a URL match alone could in
+     * principle be reached without a valid session, but this ID could not. The
+     * captured bearer token is deliberately NOT exposed or logged: it is a live
+     * credential.
+     */
+    getLoginEvidence(): { ok: boolean; url: string; at: string; ownerEntity: string } | undefined {
+        if (!this.loginEvidence) return undefined;
+        return { ...this.loginEvidence, ownerEntity: this.capturedOwnerEntity };
     }
 
     /**
@@ -345,7 +416,12 @@ export class AdobePage {
                 );
 
                 if (response.ok()) {
-                    console.log('Let\'s Go dismissed via API', { loginAccount });
+                    // owner_entity is Adobe's server-side user ID for this session — proof
+                    // the activation write landed against a real authenticated identity.
+                    console.log(
+                        `[ADOBE_LETSGO_OK] email=${loginAccount} via=api` +
+                        ` owner_entity=${this.capturedOwnerEntity} status=${response.status()}`,
+                    );
                     return;
                 }
                 console.log(`API dismiss failed (${response.status()}) — falling back to UI click`);

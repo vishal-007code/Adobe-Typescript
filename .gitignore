@@ -20,6 +20,13 @@ downloads/
 downloads_*/
 tmp/
 temp/
+
+# Account credentials — never commit these. Root accounts*.csv were tracked
+# historically; these paths keep the current inventory out of git.
+accounts.csv
+accounts-*.csv
+aug-week-csvs/
+*.xlsx
 *.log
 npm-debug.log*
 yarn-debug.log*
